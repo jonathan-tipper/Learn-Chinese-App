@@ -1,0 +1,11 @@
+:root { color-scheme: light dark; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; }
+.header { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; border-bottom: 1px solid #6663; }
+nav { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+nav a { text-decoration: none; }
+.container { padding: 1.25rem; max-width: 960px; margin: 0 auto; }
+.card { border: 1px solid #6664; border-radius: 0.75rem; padding: 1rem; margin: 0.75rem 0; }
+.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+button { cursor: pointer; }
+input, select, textarea { padding: 0.5rem; border-radius: 0.5rem; border: 1px solid #7775; }
+pre { white-space: pre-wrap; word-break: break-word; }

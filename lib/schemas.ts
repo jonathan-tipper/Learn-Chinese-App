@@ -1,0 +1,43 @@
+import { z } from "zod";
+
+export const sessionStartSchema = z.object({
+  mode: z.enum(["daily", "ask", "quick"])
+});
+
+export const sessionEndSchema = z.object({
+  sessionId: z.string().min(1),
+  durationSec: z.number().int().nonnegative(),
+  summary: z.string().optional()
+});
+
+export const chatSchema = z.object({
+  sessionId: z.string().min(1),
+  message: z.string().min(1),
+  intent: z.string().optional(),
+  saveToReview: z.boolean().optional(),
+  verifyMode: z.boolean().optional()
+});
+
+export const srsGradeSchema = z.object({
+  cardId: z.string().min(1),
+  grade: z.enum(["again", "hard", "good", "easy"])
+});
+
+export const memoryDeleteSchema = z.object({
+  memoryId: z.string().min(1)
+});
+
+export const ttsSchema = z.object({
+  text: z.string().min(1),
+  voiceId: z.string().optional(),
+  speed: z.number().min(0.5).max(2).optional()
+});
+
+export const onboardingSchema = z.object({
+  goals: z.array(z.string()).min(1),
+  interests: z.array(z.string()).default([]),
+  level: z.enum(["beginner", "intermediate", "advanced"]),
+  timezone: z.string(),
+  coachStyle: z.enum(["strict", "friendly", "playful", "concise"]),
+  minutesPerDay: z.number().min(5).max(60)
+});
