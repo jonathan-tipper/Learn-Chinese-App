@@ -4,4 +4,4 @@ export {
   appendMessage,
   logAgentRun,
   synthesizeTutorResponse
-} from "@/server/store/inMemory";
+} from "@/server/store";

@@ -1,13 +1,13 @@
-import { getUserIdFromHeaders } from "@/lib/auth";
+import { getUserIdFromRequest } from "@/lib/auth";
 import { badRequest, ok, parseBody } from "@/lib/http";
 import { onboardingSchema } from "@/lib/schemas";
 import type { Profile } from "@/lib/types";
-import { saveProfile } from "@/server/store/inMemory";
+import { saveProfile } from "@/server/store";
 
 export async function POST(request: Request) {
   try {
     const body = await parseBody(request, onboardingSchema);
-    const userId = getUserIdFromHeaders();
+    const userId = await getUserIdFromRequest(request);
 
     const profile: Profile = {
       userId,
@@ -16,10 +16,12 @@ export async function POST(request: Request) {
       level: body.level,
       timezone: body.timezone,
       coachStyle: body.coachStyle,
-      minutesPerDay: body.minutesPerDay
+      minutesPerDay: body.minutesPerDay,
+      preferredSimpleModel: body.preferredSimpleModel,
+      preferredComplexModel: body.preferredComplexModel
     };
 
-    saveProfile(profile);
+    await saveProfile(profile);
 
     return ok({
       ok: true,

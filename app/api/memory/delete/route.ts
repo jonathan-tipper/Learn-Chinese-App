@@ -1,13 +1,13 @@
-import { getUserIdFromHeaders } from "@/lib/auth";
+import { getUserIdFromRequest } from "@/lib/auth";
 import { badRequest, ok, parseBody } from "@/lib/http";
 import { memoryDeleteSchema } from "@/lib/schemas";
-import { deleteMemory } from "@/server/store/inMemory";
+import { deleteMemory } from "@/server/store";
 
 export async function DELETE(request: Request) {
   try {
-    const userId = getUserIdFromHeaders();
+    const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, memoryDeleteSchema);
-    const deleted = deleteMemory(userId, body.memoryId);
+    const deleted = await deleteMemory(userId, body.memoryId);
     if (!deleted) {
       return badRequest("Memory not found");
     }

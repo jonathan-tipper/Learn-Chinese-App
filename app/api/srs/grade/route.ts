@@ -1,13 +1,13 @@
-import { getUserIdFromHeaders } from "@/lib/auth";
+import { getUserIdFromRequest } from "@/lib/auth";
 import { badRequest, ok, parseBody } from "@/lib/http";
 import { srsGradeSchema } from "@/lib/schemas";
-import { gradeCard } from "@/server/store/inMemory";
+import { gradeCard } from "@/server/store";
 
 export async function POST(request: Request) {
   try {
-    const userId = getUserIdFromHeaders();
+    const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, srsGradeSchema);
-    const card = gradeCard(userId, body.cardId, body.grade);
+    const card = await gradeCard(userId, body.cardId, body.grade);
     if (!card) {
       return badRequest("Card not found");
     }

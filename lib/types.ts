@@ -2,6 +2,7 @@ export type CoachStyle = "strict" | "friendly" | "playful" | "concise";
 export type SessionMode = "daily" | "ask" | "quick";
 export type MessageRole = "user" | "assistant" | "system";
 export type SrsGrade = "again" | "hard" | "good" | "easy";
+export type ModelSelectionMode = "auto" | "simple" | "complex" | "custom";
 
 export interface Profile {
   userId: string;
@@ -11,6 +12,8 @@ export interface Profile {
   timezone: string;
   coachStyle: CoachStyle;
   minutesPerDay: number;
+  preferredSimpleModel: string;
+  preferredComplexModel: string;
 }
 
 export interface SessionRecord {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { ZodSchema } from "zod";
+import { type ZodTypeAny, type infer as ZodInfer } from "zod";
 
-export async function parseBody<T>(request: Request, schema: ZodSchema<T>) {
+export async function parseBody<TSchema extends ZodTypeAny>(request: Request, schema: TSchema): Promise<ZodInfer<TSchema>> {
   const json = await request.json();
   return schema.parse(json);
 }

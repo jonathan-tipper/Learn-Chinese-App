@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
 
 type Structured = {
   answer: string;
@@ -40,10 +41,28 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string>("");
   const [input, setInput] = useState("Teach me how to order tea politely.");
   const [verifyMode, setVerifyMode] = useState(false);
+  const [modelSelectionMode, setModelSelectionMode] = useState<"auto" | "simple" | "complex" | "custom">("auto");
+  const [customModel, setCustomModel] = useState("zai-org-glm-5");
+  const [modelOptions, setModelOptions] = useState<string[]>([...VENICE_MODEL_OPTIONS]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [status, setStatus] = useState("Start a session to begin.");
 
   const canSend = useMemo(() => sessionId && input.trim().length > 0, [input, sessionId]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/models");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (Array.isArray(data.models) && data.models.length > 0) {
+          setModelOptions(data.models);
+        }
+      } catch {
+        // Keep local fallback model list if the models endpoint fails.
+      }
+    })();
+  }, []);
 
   async function startSession() {
     const response = await fetch("/api/session/start", {
@@ -74,13 +93,25 @@ export default function ChatPage() {
 
     const userMessage = input;
     setStatus("Coach is responding...");
+    const payload = {
+      sessionId,
+      message: userMessage,
+      verifyMode,
+      intent,
+      saveToReview,
+      modelSelectionMode,
+      customModel: modelSelectionMode === "custom" ? customModel : undefined
+    };
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, message: userMessage, verifyMode, intent, saveToReview })
+      body: JSON.stringify(payload)
     });
-
     const text = await response.text();
+    if (!response.ok) {
+      setStatus(`Error: ${text}`);
+      return;
+    }
     const structured = parseSse(text);
 
     setTurns((prev) => [...prev, { user: userMessage, assistant: structured }]);
@@ -98,7 +129,25 @@ export default function ChatPage() {
             <input type="checkbox" checked={verifyMode} onChange={(e) => setVerifyMode(e.target.checked)} />
             Verify mode
           </label>
+          <label className="row">
+            Model mode
+            <select value={modelSelectionMode} onChange={(e) => setModelSelectionMode(e.target.value as "auto" | "simple" | "complex" | "custom")}>
+              <option value="auto">Auto</option>
+              <option value="simple">Simple (zai-org-glm-4.7)</option>
+              <option value="complex">Complex (zai-org-glm-5)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
         </div>
+        {modelSelectionMode === "custom" ? (
+          <div className="row">
+            <label>Custom model</label>
+            <input list="venice-model-options" value={customModel} onChange={(e) => setCustomModel(e.target.value)} />
+            <datalist id="venice-model-options">
+              {modelOptions.map((model) => <option key={model} value={model} />)}
+            </datalist>
+          </div>
+        ) : null}
         <p>Session: {sessionId || "Not started"}</p>
         <p>{status}</p>
       </div>

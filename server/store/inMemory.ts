@@ -9,6 +9,7 @@ import type {
   SrsGrade,
   TutorStructuredResponse
 } from "@/lib/types";
+import { computeScheduling } from "@/server/store/srs";
 
 const now = () => new Date().toISOString();
 
@@ -18,6 +19,15 @@ const memories = new Map<string, MemoryItem[]>();
 const srsCards = new Map<string, SrsCard[]>();
 const profiles = new Map<string, Profile>();
 const agentRuns: AgentRun[] = [];
+
+export function resetInMemoryStore() {
+  sessions.clear();
+  messages.clear();
+  memories.clear();
+  srsCards.clear();
+  profiles.clear();
+  agentRuns.length = 0;
+}
 
 export function saveProfile(profile: Profile) {
   profiles.set(profile.userId, profile);
@@ -35,9 +45,10 @@ export function createSession(userId: string, mode: SessionRecord["mode"]) {
   return session;
 }
 
-export function endSession(sessionId: string, durationSec: number, summary?: string) {
+export function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
   const current = sessions.get(sessionId);
   if (!current) return null;
+  if (userId && current.userId !== userId) return null;
   const updated = { ...current, endedAt: now(), durationSec, summary };
   sessions.set(sessionId, updated);
   return updated;
@@ -121,19 +132,10 @@ export function gradeCard(userId: string, cardId: string, grade: SrsGrade) {
   const idx = list.findIndex((c) => c.id === cardId);
   if (idx < 0) return null;
 
-  const gradeMultiplier: Record<SrsGrade, number> = {
-    again: 0.5,
-    hard: 0.8,
-    good: 1.25,
-    easy: 1.6
-  };
-
   const current = list[idx];
-  const interval = Math.max(1, Math.round(current.interval * gradeMultiplier[grade]));
-  const ease = Math.max(1.3, Number((current.ease + (grade === "easy" ? 0.15 : grade === "again" ? -0.2 : 0)).toFixed(2)));
-  const nextDue = new Date(Date.now() + interval * 24 * 60 * 60 * 1000).toISOString();
+  const { interval, ease, nextDueAt } = computeScheduling(current.interval, current.ease, grade);
 
-  const updated = { ...current, interval, ease, nextDueAt: nextDue, lastResult: grade };
+  const updated = { ...current, interval, ease, nextDueAt, lastResult: grade };
   list[idx] = updated;
   srsCards.set(userId, list);
   return updated;

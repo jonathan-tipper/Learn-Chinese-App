@@ -1,6 +1,7 @@
-import { getUserIdFromHeaders } from "@/lib/auth";
+import { getUserIdFromRequest } from "@/lib/auth";
 import { badRequest, parseBody } from "@/lib/http";
 import { chatSchema } from "@/lib/schemas";
+import type { TutorStructuredResponse } from "@/lib/types";
 import { runTutorGraph } from "@/server/agents/graph";
 import {
   addMemory,
@@ -9,9 +10,10 @@ import {
   deleteMemory,
   listMemories,
   logAgentRun
-} from "@/server/store/inMemory";
+} from "@/server/store";
 
 export const runtime = "nodejs";
+const sseEncoder = new TextEncoder();
 
 function parseMemoryCommand(message: string) {
   const rememberMatch = message.match(/^remember\s+(.+?)\s*:\s*(.+)$/i);
@@ -39,12 +41,44 @@ function formatIntent(answer: string, intent?: string) {
   return answer;
 }
 
+function normalizeReviewItem(value: string) {
+  return value
+    .replace(/\s+\([^)]*\)\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deriveReviewItems(structured: TutorStructuredResponse, userMessage: string, saveToReview?: boolean) {
+  const candidates = [
+    ...structured.suggestedReviewItems,
+    ...structured.examples,
+    ...structured.keyPoints.map((point) => `Concept: ${point}`),
+    structured.microExercise
+  ];
+
+  if (saveToReview) {
+    candidates.push(userMessage);
+  }
+
+  return Array.from(new Set(candidates.map(normalizeReviewItem).filter(Boolean))).slice(0, 20);
+}
+
+function chunkText(content: string, chunkSize = 90) {
+  const chunks: string[] = [];
+  for (let i = 0; i < content.length; i += chunkSize) {
+    chunks.push(content.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
 function streamFinal(answer: string) {
   return new Response(
     new ReadableStream({
       start(controller) {
         controller.enqueue(
-          `data: ${JSON.stringify({ type: "final", structured: { answer, keyPoints: [], examples: [], microExercise: "", suggestedReviewItems: [] } })}\n\n`
+          sseEncoder.encode(
+            `data: ${JSON.stringify({ type: "final", structured: { answer, keyPoints: [], examples: [], microExercise: "", suggestedReviewItems: [] } })}\n\n`
+          )
         );
         controller.close();
       }
@@ -56,43 +90,50 @@ function streamFinal(answer: string) {
 export async function POST(request: Request) {
   try {
     const body = await parseBody(request, chatSchema);
-    const userId = getUserIdFromHeaders();
-    appendMessage(body.sessionId, "user", body.message);
+    const userId = await getUserIdFromRequest(request);
+    await appendMessage(body.sessionId, "user", body.message);
 
     const memoryCommand = parseMemoryCommand(body.message);
     if (memoryCommand?.action === "remember") {
-      const saved = addMemory(userId, memoryCommand.key, memoryCommand.value, "preference");
+      const saved = await addMemory(userId, memoryCommand.key, memoryCommand.value, "preference");
       const answer = `Got it — I’ll remember: ${saved.key} = ${saved.value}.`;
-      appendMessage(body.sessionId, "assistant", answer);
+      await appendMessage(body.sessionId, "assistant", answer);
       return streamFinal(answer);
     }
 
     if (memoryCommand?.action === "forget") {
-      const candidate = listMemories(userId).find((m) => m.key.toLowerCase() === memoryCommand.target);
-      const removed = candidate ? deleteMemory(userId, candidate.id) : false;
+      const memories = await listMemories(userId);
+      const candidate = memories.find((m) => m.key.toLowerCase() === memoryCommand.target);
+      const removed = candidate ? await deleteMemory(userId, candidate.id) : false;
       const answer = removed
         ? `Done — I forgot '${memoryCommand.target}'.`
         : `I couldn’t find a memory named '${memoryCommand.target}'.`;
-      appendMessage(body.sessionId, "assistant", answer);
+      await appendMessage(body.sessionId, "assistant", answer);
       return streamFinal(answer);
     }
 
     const started = Date.now();
-    const graph = await runTutorGraph({ userId, sessionId: body.sessionId, message: body.message });
+    const graph = await runTutorGraph({
+      userId,
+      sessionId: body.sessionId,
+      message: body.message,
+      intent: body.intent,
+      verifyMode: body.verifyMode,
+      modelSelectionMode: body.modelSelectionMode,
+      customModel: body.customModel
+    });
 
     let answer = formatIntent(graph.structured.answer, body.intent);
     if (body.verifyMode) {
       answer += "\n\nVerification note: I may be wrong on edge-case grammar—cross-check if this is high-stakes.";
     }
 
-    const reviewItems = body.saveToReview
-      ? [...graph.structured.suggestedReviewItems, body.message]
-      : graph.structured.suggestedReviewItems;
+    const reviewItems = deriveReviewItems(graph.structured, body.message, body.saveToReview);
 
-    appendMessage(body.sessionId, "assistant", answer);
-    const cards = addSrsCards(userId, reviewItems);
+    await appendMessage(body.sessionId, "assistant", answer);
+    const cards = await addSrsCards(userId, reviewItems);
 
-    logAgentRun({
+    await logAgentRun({
       userId,
       sessionId: body.sessionId,
       nodeName: "TutorResponse",
@@ -102,9 +143,13 @@ export async function POST(request: Request) {
 
     const stream = new ReadableStream({
       start(controller) {
-        controller.enqueue(`data: ${JSON.stringify({ type: "delta", content: answer })}\n\n`);
+        for (const chunk of chunkText(answer)) {
+          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`));
+        }
         controller.enqueue(
-          `data: ${JSON.stringify({ type: "final", structured: { ...graph.structured, answer }, nodesExecuted: graph.nodesExecuted, createdReviewCards: cards.length })}\n\n`
+          sseEncoder.encode(
+            `data: ${JSON.stringify({ type: "final", structured: { ...graph.structured, answer }, nodesExecuted: graph.nodesExecuted, createdReviewCards: cards.length })}\n\n`
+          )
         );
         controller.close();
       }

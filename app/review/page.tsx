@@ -3,6 +3,15 @@
 import { useMemo, useState } from "react";
 
 type Card = { id: string; prompt: string; answer: string; hints: string[] };
+type SpeechRecognitionResultEventLike = {
+  results?: ArrayLike<ArrayLike<{ transcript?: string }>>;
+};
+type WebkitSpeechRecognitionLike = {
+  lang: string;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  start: () => void;
+};
+type WebkitSpeechRecognitionConstructor = new () => WebkitSpeechRecognitionLike;
 
 const characterQuestions = [
   { hanzi: "你", pinyin: "ni3", meaning: "you" },
@@ -37,7 +46,7 @@ export default function ReviewPage() {
   }
 
   function startSpeechInput() {
-    const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+    const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: WebkitSpeechRecognitionConstructor }).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setStatus("Speech input unavailable in this browser.");
       return;
@@ -45,7 +54,7 @@ export default function ReviewPage() {
 
     const recognition = new SpeechRecognition();
     recognition.lang = "zh-CN";
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: SpeechRecognitionResultEventLike) => {
       const transcript = event.results?.[0]?.[0]?.transcript ?? "";
       setSpokenText(transcript);
       setStatus(`Captured speech: ${transcript}`);

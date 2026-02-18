@@ -1,13 +1,13 @@
-import { getUserIdFromHeaders } from "@/lib/auth";
+import { getUserIdFromRequest } from "@/lib/auth";
 import { badRequest, ok, parseBody } from "@/lib/http";
 import { sessionStartSchema } from "@/lib/schemas";
-import { createSession } from "@/server/store/inMemory";
+import { createSession } from "@/server/store";
 
 export async function POST(request: Request) {
   try {
     const body = await parseBody(request, sessionStartSchema);
-    const userId = getUserIdFromHeaders();
-    const session = createSession(userId, body.mode);
+    const userId = await getUserIdFromRequest(request);
+    const session = await createSession(userId, body.mode);
 
     return ok({
       sessionId: session.id,

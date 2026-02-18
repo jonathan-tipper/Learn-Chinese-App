@@ -1,11 +1,13 @@
+import { getUserIdFromRequest } from "@/lib/auth";
 import { badRequest, ok, parseBody } from "@/lib/http";
 import { sessionEndSchema } from "@/lib/schemas";
-import { endSession } from "@/server/store/inMemory";
+import { endSession } from "@/server/store";
 
 export async function POST(request: Request) {
   try {
+    const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, sessionEndSchema);
-    const session = endSession(body.sessionId, body.durationSec, body.summary);
+    const session = await endSession(body.sessionId, body.durationSec, body.summary, userId);
     if (!session) {
       return badRequest("Session not found");
     }
