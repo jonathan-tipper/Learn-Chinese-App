@@ -2,6 +2,7 @@ export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? "",
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  supabaseDbSchema: process.env.SUPABASE_DB_SCHEMA ?? "learn_chinese",
   langGraphPostgresUrl: process.env.LANGGRAPH_POSTGRES_URL ?? "",
   veniceApiKey: process.env.VENICE_API_KEY ?? "",
   veniceBaseUrl: process.env.VENICE_BASE_URL ?? "https://api.venice.ai/api/v1",

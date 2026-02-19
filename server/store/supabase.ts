@@ -8,11 +8,13 @@ import type {
   SrsCard,
   SrsGrade
 } from "@/lib/types";
+import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
 import { computeScheduling } from "@/server/store/srs";
 
 const nowIso = () => new Date().toISOString();
+const table = (name: string) => `${env.supabaseDbSchema}.${name}`;
 
 type ProfileRow = {
   user_id: string;
@@ -127,7 +129,7 @@ export async function saveProfile(profile: Profile) {
     preferredComplexModel: profile.preferredComplexModel
   };
 
-  const { error } = await client.from("profiles").upsert(
+  const { error } = await client.from(table("profiles")).upsert(
     {
       user_id: profile.userId,
       goals: profile.goals,
@@ -147,7 +149,7 @@ export async function saveProfile(profile: Profile) {
 export async function getProfile(userId: string): Promise<Profile | null> {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("profiles")
+    .from(table("profiles"))
     .select("user_id, goals, level, preferences, timezone, coach_style")
     .eq("user_id", userId)
     .maybeSingle<ProfileRow>();
@@ -186,7 +188,7 @@ export async function createSession(userId: string, mode: SessionRecord["mode"])
   const id = randomUUID();
   const startedAt = nowIso();
 
-  const { error } = await client.from("sessions").insert({
+  const { error } = await client.from(table("sessions")).insert({
     id,
     user_id: userId,
     mode,
@@ -204,7 +206,7 @@ export async function endSession(sessionId: string, durationSec: number, summary
   const endedAt = nowIso();
 
   let query = client
-    .from("sessions")
+    .from(table("sessions"))
     .update({
       ended_at: endedAt,
       summary: summary ?? null,
@@ -228,7 +230,7 @@ export async function endSession(sessionId: string, durationSec: number, summary
 export async function listSessionsByUser(userId: string) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("sessions")
+    .from(table("sessions"))
     .select("id, user_id, mode, started_at, ended_at, summary, metrics_json")
     .eq("user_id", userId)
     .order("started_at", { ascending: false })
@@ -248,7 +250,7 @@ export async function appendMessage(sessionId: string, role: MessageRecord["role
     createdAt: nowIso()
   };
 
-  const { error } = await client.from("messages").insert({
+  const { error } = await client.from(table("messages")).insert({
     id: message.id,
     session_id: message.sessionId,
     role: message.role,
@@ -263,7 +265,7 @@ export async function appendMessage(sessionId: string, role: MessageRecord["role
 export async function listSessionMessages(sessionId: string) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("messages")
+    .from(table("messages"))
     .select("id, session_id, role, content, created_at")
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true })
@@ -283,7 +285,7 @@ export async function listSessionMessages(sessionId: string) {
 export async function listMemories(userId: string) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("memories")
+    .from(table("memories"))
     .select("id, user_id, type, key, value_json, confidence, created_at, deleted_at")
     .eq("user_id", userId)
     .is("deleted_at", null)
@@ -306,7 +308,7 @@ export async function addMemory(userId: string, key: string, value: string, type
     createdAt: nowIso()
   };
 
-  const { error } = await client.from("memories").insert({
+  const { error } = await client.from(table("memories")).insert({
     id: item.id,
     user_id: item.userId,
     type: item.type,
@@ -324,7 +326,7 @@ export async function addMemory(userId: string, key: string, value: string, type
 export async function deleteMemory(userId: string, memoryId: string) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("memories")
+    .from(table("memories"))
     .update({ deleted_at: nowIso(), updated_at: nowIso() })
     .eq("id", memoryId)
     .eq("user_id", userId)
@@ -356,7 +358,7 @@ export async function addSrsCards(userId: string, items: string[]) {
   }));
 
   const { data, error } = await client
-    .from("srs_cards")
+    .from(table("srs_cards"))
     .insert(rows)
     .select("id, user_id, prompt, answer, hints, tags, ease, interval, next_due_at, last_result")
     .returns<SrsRow[]>();
@@ -368,7 +370,7 @@ export async function addSrsCards(userId: string, items: string[]) {
 export async function getAllCards(userId: string) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("srs_cards")
+    .from(table("srs_cards"))
     .select("id, user_id, prompt, answer, hints, tags, ease, interval, next_due_at, last_result")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -381,7 +383,7 @@ export async function getAllCards(userId: string) {
 export async function getDueCards(userId: string, limit = 10) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
-    .from("srs_cards")
+    .from(table("srs_cards"))
     .select("id, user_id, prompt, answer, hints, tags, ease, interval, next_due_at, last_result")
     .eq("user_id", userId)
     .lte("next_due_at", nowIso())
@@ -396,7 +398,7 @@ export async function getDueCards(userId: string, limit = 10) {
 export async function gradeCard(userId: string, cardId: string, grade: SrsGrade) {
   const client = getSupabaseServiceClient();
   const { data: existing, error: selectError } = await client
-    .from("srs_cards")
+    .from(table("srs_cards"))
     .select("id, ease, interval")
     .eq("id", cardId)
     .eq("user_id", userId)
@@ -408,7 +410,7 @@ export async function gradeCard(userId: string, cardId: string, grade: SrsGrade)
   const { interval, ease, nextDueAt } = computeScheduling(existing.interval, existing.ease, grade);
 
   const { data: updated, error: updateError } = await client
-    .from("srs_cards")
+    .from(table("srs_cards"))
     .update({
       interval,
       ease,
@@ -438,7 +440,7 @@ export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
     created_at: nowIso()
   };
 
-  const { error } = await client.from("agent_runs").insert(payload);
+  const { error } = await client.from(table("agent_runs")).insert(payload);
   if (error) throw error;
 }
 

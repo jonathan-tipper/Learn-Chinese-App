@@ -4,7 +4,7 @@ import { env, isSupabaseAuthEnabled, isSupabaseStoreEnabled } from "@/lib/env";
 let serviceClient: SupabaseClient | null = null;
 let authClient: SupabaseClient | null = null;
 
-export function getSupabaseServiceClient() {
+export function getSupabaseServiceClient(): SupabaseClient {
   if (!isSupabaseStoreEnabled()) {
     throw new Error("Supabase store is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
@@ -18,7 +18,7 @@ export function getSupabaseServiceClient() {
   return serviceClient;
 }
 
-export function getSupabaseAuthClient() {
+export function getSupabaseAuthClient(): SupabaseClient {
   if (!isSupabaseAuthEnabled()) {
     throw new Error("Supabase auth is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }

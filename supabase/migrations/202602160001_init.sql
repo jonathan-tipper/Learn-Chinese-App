@@ -114,23 +114,23 @@ alter table srs_cards enable row level security;
 alter table grammar_points enable row level security;
 alter table agent_runs enable row level security;
 
-create policy if not exists profiles_owner on profiles using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy if not exists sessions_owner on sessions using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy if not exists memories_owner on memories using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy if not exists vocab_owner on vocab_items using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy if not exists srs_owner on srs_cards using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy if not exists grammar_owner on grammar_points using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy if not exists runs_owner on agent_runs using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy profiles_owner on profiles using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy sessions_owner on sessions using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy memories_owner on memories using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy vocab_owner on vocab_items using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy srs_owner on srs_cards using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy grammar_owner on grammar_points using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy runs_owner on agent_runs using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- messages access via parent session ownership
-create policy if not exists messages_owner on messages using (
+create policy messages_owner on messages using (
   exists (select 1 from sessions s where s.id = messages.session_id and s.user_id = auth.uid())
 ) with check (
   exists (select 1 from sessions s where s.id = messages.session_id and s.user_id = auth.uid())
 );
 
 -- memory_events access via memory ownership
-create policy if not exists memory_events_owner on memory_events using (
+create policy memory_events_owner on memory_events using (
   exists (select 1 from memories m where m.id = memory_events.memory_id and m.user_id = auth.uid())
 ) with check (
   exists (select 1 from memories m where m.id = memory_events.memory_id and m.user_id = auth.uid())
