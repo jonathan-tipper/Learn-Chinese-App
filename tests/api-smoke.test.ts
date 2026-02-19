@@ -41,8 +41,11 @@ function parseSseFinal(raw: string) {
 }
 
 describe("API smoke", () => {
+  const originalDevAuthFallback = process.env.ALLOW_DEV_AUTH_FALLBACK;
+
   beforeEach(() => {
     resetInMemoryStore();
+    process.env.ALLOW_DEV_AUTH_FALLBACK = originalDevAuthFallback;
 
     (env as { veniceApiKey: string }).veniceApiKey = "test-venice-key";
     (env as { veniceBaseUrl: string }).veniceBaseUrl = "https://api.venice.ai/api/v1";
@@ -104,6 +107,7 @@ describe("API smoke", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    process.env.ALLOW_DEV_AUTH_FALLBACK = originalDevAuthFallback;
     vi.restoreAllMocks();
   });
 
@@ -217,5 +221,19 @@ describe("API smoke", () => {
     expect(data.models).toContain("zai-org-glm-5");
     expect(data.defaults.simple).toBe("zai-org-glm-4.7");
     expect(data.defaults.complex).toBe("zai-org-glm-5");
+  });
+
+  it("requires bearer auth when dev fallback is disabled", async () => {
+    process.env.ALLOW_DEV_AUTH_FALLBACK = "false";
+
+    const response = await sessionStart(new Request("http://localhost/api/session/start", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "daily" })
+    }));
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error).toBe("Missing bearer token.");
   });
 });

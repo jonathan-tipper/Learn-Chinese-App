@@ -28,6 +28,7 @@ Copy `.env.example` to `.env.local` and fill the values you need:
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `SUPABASE_DB_SCHEMA` (optional, defaults to `learn_chinese`)
+  - `ALLOW_DEV_AUTH_FALLBACK` (optional, defaults to `true` outside production and `false` in production)
   - `LANGGRAPH_POSTGRES_URL` (optional, for LangGraph checkpoint persistence in Postgres)
 - Venice (required):
   - `VENICE_API_KEY`
@@ -86,6 +87,6 @@ npm run build
 
 ## Notes
 
-- API auth supports bearer token lookup via Supabase Auth, with `x-user-id` fallback for local/dev flows.
+- API auth validates bearer tokens via Supabase Auth. Header-based fallback (`x-user-id`/demo user) is only enabled when `ALLOW_DEV_AUTH_FALLBACK=true`.
 - Supabase storage is automatically used when required env vars are present.
 - If you use a shared Supabase project, add `learn_chinese` (or your configured `SUPABASE_DB_SCHEMA`) to API Exposed Schemas in Supabase settings.

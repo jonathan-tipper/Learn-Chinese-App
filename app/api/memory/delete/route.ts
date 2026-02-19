@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, ok, parseBody } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
 import { memoryDeleteSchema } from "@/lib/schemas";
 import { deleteMemory } from "@/server/store";
 
@@ -13,6 +13,6 @@ export async function DELETE(request: Request) {
     }
     return ok({ ok: true });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }

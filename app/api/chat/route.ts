@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, parseBody } from "@/lib/http";
+import { errorResponse, parseBody } from "@/lib/http";
 import { chatSchema } from "@/lib/schemas";
 import type { TutorStructuredResponse } from "@/lib/types";
 import { runTutorGraph } from "@/server/agents/graph";
@@ -163,6 +163,6 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }

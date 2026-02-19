@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, ok, parseBody } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
 import { sessionEndSchema } from "@/lib/schemas";
 import { endSession } from "@/server/store";
 
@@ -14,6 +14,6 @@ export async function POST(request: Request) {
 
     return ok({ ok: true, metrics: { durationSec: session.durationSec ?? 0 } });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }

@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, ok, parseBody } from "@/lib/http";
+import { errorResponse, ok, parseBody } from "@/lib/http";
 import { onboardingSchema } from "@/lib/schemas";
 import type { Profile } from "@/lib/types";
 import { saveProfile } from "@/server/store";
@@ -35,6 +35,6 @@ export async function POST(request: Request) {
       ]
     });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }

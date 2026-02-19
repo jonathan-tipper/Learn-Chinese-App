@@ -23,3 +23,20 @@ export function isSupabaseAuthEnabled() {
 export function isVeniceEnabled() {
   return Boolean(env.veniceApiKey);
 }
+
+export function isDevAuthFallbackEnabled() {
+  const raw = process.env.ALLOW_DEV_AUTH_FALLBACK?.trim().toLowerCase();
+  if (!raw) {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  if (["1", "true", "yes", "on"].includes(raw)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(raw)) {
+    return false;
+  }
+
+  return process.env.NODE_ENV !== "production";
+}

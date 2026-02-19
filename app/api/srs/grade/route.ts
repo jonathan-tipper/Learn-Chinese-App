@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, ok, parseBody } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
 import { srsGradeSchema } from "@/lib/schemas";
 import { gradeCard } from "@/server/store";
 
@@ -14,6 +14,6 @@ export async function POST(request: Request) {
 
     return ok({ nextDueAt: card.nextDueAt, ease: card.ease, interval: card.interval });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }
