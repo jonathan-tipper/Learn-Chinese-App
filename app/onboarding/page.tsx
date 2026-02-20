@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { authedFetch } from "@/lib/authed-fetch";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL, VENICE_MODEL_OPTIONS } from "@/lib/venice";
 
 export default function OnboardingPage() {
@@ -36,7 +37,7 @@ export default function OnboardingPage() {
       preferredComplexModel: form.get("preferredComplexModel")
     };
 
-    const response = await fetch("/api/onboarding/save", {
+    const response = await authedFetch("/api/onboarding/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)

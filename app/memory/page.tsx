@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authedFetch } from "@/lib/authed-fetch";
 
 type Memory = { id: string; key: string; value: string; type: string };
 
@@ -8,13 +9,17 @@ export default function MemoryPage() {
   const [memories, setMemories] = useState<Memory[]>([]);
 
   async function refresh() {
-    const response = await fetch("/api/memory/list");
+    const response = await authedFetch("/api/memory/list");
+    if (!response.ok) {
+      setMemories([]);
+      return;
+    }
     const data = await response.json();
     setMemories(data.memories ?? []);
   }
 
   async function remove(memoryId: string) {
-    await fetch("/api/memory/delete", {
+    await authedFetch("/api/memory/delete", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ memoryId })

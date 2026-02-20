@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { authedFetch } from "@/lib/authed-fetch";
 
 type Summary = {
   totalSessions: number;
@@ -15,7 +16,11 @@ export default function ProgressPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
 
   async function refresh() {
-    const response = await fetch("/api/progress/summary");
+    const response = await authedFetch("/api/progress/summary");
+    if (!response.ok) {
+      setSummary(null);
+      return;
+    }
     const data = await response.json();
     setSummary(data.summary ?? null);
   }

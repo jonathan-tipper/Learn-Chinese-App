@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { authedFetch } from "@/lib/authed-fetch";
 
 type Card = { id: string; prompt: string; answer: string; hints: string[] };
 type SpeechRecognitionResultEventLike = {
@@ -29,17 +30,26 @@ export default function ReviewPage() {
   const currentCharacter = useMemo(() => characterQuestions[characterIndex % characterQuestions.length], [characterIndex]);
 
   async function loadDue() {
-    const response = await fetch("/api/srs/next?limit=5");
+    const response = await authedFetch("/api/srs/next?limit=5");
+    if (!response.ok) {
+      setCards([]);
+      setStatus("Please sign in to load review cards.");
+      return;
+    }
     const data = await response.json();
     setCards(data.cards ?? []);
   }
 
   async function grade(cardId: string, gradeValue: "again" | "hard" | "good" | "easy") {
-    const response = await fetch("/api/srs/grade", {
+    const response = await authedFetch("/api/srs/grade", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cardId, grade: gradeValue })
     });
+    if (!response.ok) {
+      setStatus("Please sign in to grade cards.");
+      return;
+    }
     const data = await response.json();
     setStatus(`Card graded ${gradeValue}. Next due: ${data.nextDueAt ?? "unknown"}`);
     loadDue();

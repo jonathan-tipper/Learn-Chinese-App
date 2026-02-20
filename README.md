@@ -42,6 +42,13 @@ Copy `.env.example` to `.env.local` and fill the values you need:
   - `ELEVENLABS_VOICE_ID`
   - `ELEVENLABS_MODEL_ID`
 
+## Authentication setup
+
+- Login page: `/login`
+- Providers supported: Supabase OAuth (`google`, `github`) and Supabase email/password.
+- In Supabase dashboard, enable the providers you want under Authentication > Providers.
+- Add your deployed URL and local URL (`http://localhost:3000`) to Supabase Authentication URL allow list.
+
 ## Implemented API surface (scaffold)
 
 - `POST /api/onboarding/save`

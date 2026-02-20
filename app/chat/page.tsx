@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { authedFetch } from "@/lib/authed-fetch";
 import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
 
 type Structured = {
@@ -65,11 +66,16 @@ export default function ChatPage() {
   }, []);
 
   async function startSession() {
-    const response = await fetch("/api/session/start", {
+    const response = await authedFetch("/api/session/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "daily" })
     });
+    if (!response.ok) {
+      const text = await response.text();
+      setStatus(`Error: ${text}`);
+      return;
+    }
     const data = await response.json();
     setSessionId(data.sessionId);
     setStatus(`Session started: ${data.sessionId}`);
@@ -77,11 +83,16 @@ export default function ChatPage() {
 
   async function endSession() {
     if (!sessionId) return;
-    await fetch("/api/session/end", {
+    const response = await authedFetch("/api/session/end", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId, durationSec: Math.max(60, turns.length * 90), summary: "Session complete" })
     });
+    if (!response.ok) {
+      const text = await response.text();
+      setStatus(`Error: ${text}`);
+      return;
+    }
 
     localStorage.setItem("lastSessionDate", new Date().toISOString().slice(0, 10));
     setStatus("Session ended. Great work today.");
@@ -102,7 +113,7 @@ export default function ChatPage() {
       modelSelectionMode,
       customModel: modelSelectionMode === "custom" ? customModel : undefined
     };
-    const response = await fetch("/api/chat", {
+    const response = await authedFetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
