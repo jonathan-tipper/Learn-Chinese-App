@@ -15,6 +15,57 @@ const structuredSchema = z.object({
   suggestedReviewItems: z.array(z.string()).min(1).max(10)
 });
 
+function firstNonEmptyString(candidates: unknown[], fallback: string) {
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const cleaned = candidate.trim();
+      if (cleaned) return cleaned;
+    }
+  }
+  return fallback;
+}
+
+function boundedStringArray(value: unknown, maxItems: number, fallback: string[]) {
+  const source = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  const cleaned = source
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+
+  if (cleaned.length > 0) {
+    return cleaned;
+  }
+
+  return fallback
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeStructuredPayload(raw: unknown) {
+  const payload = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const answer = firstNonEmptyString(
+    [payload.answer, payload.response, payload.text],
+    "Let me give a concise Mandarin explanation."
+  );
+  const keyPoints = boundedStringArray(payload.keyPoints, 4, ["Use this pattern in one short sentence."]);
+  const examples = boundedStringArray(payload.examples, 6, [answer]);
+  const microExercise = firstNonEmptyString(
+    [payload.microExercise, payload.exercise],
+    "Write one sentence using the pattern above."
+  );
+  const suggestedReviewItems = boundedStringArray(payload.suggestedReviewItems, 10, keyPoints);
+
+  return {
+    answer,
+    keyPoints,
+    examples,
+    microExercise,
+    suggestedReviewItems
+  };
+}
+
 function extractJsonObject(text: string) {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i);
   if (fenced?.[1]) return fenced[1].trim();
@@ -45,7 +96,8 @@ function buildPrompt(input: {
     `Recent user messages:\n${recentMessages}`,
     `Verify mode: ${input.verifyMode ? "enabled" : "disabled"}`,
     "Teach Mandarin in-context. Include concise hanzi + pinyin + English where useful.",
-    "Output JSON only with keys: answer, keyPoints, examples, microExercise, suggestedReviewItems."
+    "Output JSON only with keys: answer, keyPoints, examples, microExercise, suggestedReviewItems.",
+    "Constraints: keyPoints max 4 items, examples max 6 items, suggestedReviewItems max 10 items."
   ].join("\n\n");
 }
 
@@ -112,7 +164,7 @@ async function queryVenice(input: {
   }
 
   const parsed = JSON.parse(extractJsonObject(content));
-  return structuredSchema.parse(parsed);
+  return structuredSchema.parse(normalizeStructuredPayload(parsed));
 }
 
 export async function generateTutorStructuredResponse(input: {

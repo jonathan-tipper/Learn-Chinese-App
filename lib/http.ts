@@ -24,6 +24,23 @@ export function errorResponse(error: unknown) {
     return unauthorized(error.message);
   }
 
+  if (error && typeof error === "object") {
+    const structured = error as {
+      message?: unknown;
+      code?: unknown;
+      details?: unknown;
+      hint?: unknown;
+    };
+
+    if (typeof structured.message === "string") {
+      const parts = [structured.message];
+      if (typeof structured.code === "string") parts.push(`code=${structured.code}`);
+      if (typeof structured.details === "string" && structured.details) parts.push(structured.details);
+      if (typeof structured.hint === "string" && structured.hint) parts.push(`hint=${structured.hint}`);
+      return badRequest(parts.join(" | "));
+    }
+  }
+
   const message = error instanceof Error ? error.message : "Bad request";
   return badRequest(message);
 }
