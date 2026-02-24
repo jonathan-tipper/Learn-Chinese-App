@@ -4,6 +4,9 @@
 
 @layer base {
   :root {
+    /* Font — Inter loaded via <link> tag; variable mirrors next/font convention */
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
     /* Ink & Paper — Light */
     --background: 40 33% 97%;
     --foreground: 20 14% 11%;

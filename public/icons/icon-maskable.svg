@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Full-bleed background (no rounded corners — OS applies the mask) -->
+  <rect width="512" height="512" fill="#2d7d6a"/>
+  <!-- Same "M" mark, scaled down ~10% to respect the 80% safe zone -->
+  <g fill="white" transform="translate(256,256) scale(0.9)">
+    <rect x="-110" y="-120" width="40" height="240" rx="8"/>
+    <rect x="70"   y="-120" width="40" height="240" rx="8"/>
+    <polygon points="-90,-120 -50,-20 -10,-120" />
+    <polygon points="10,-120  50,-20  90,-120" />
+    <rect x="-60" y="-30" width="120" height="34" rx="8"/>
+  </g>
+</svg>

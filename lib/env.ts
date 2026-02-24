@@ -9,7 +9,10 @@ export const env = {
   veniceSimpleModel: process.env.VENICE_SIMPLE_MODEL ?? "zai-org-glm-4.7",
   veniceComplexModel: process.env.VENICE_COMPLEX_MODEL ?? "zai-org-glm-5",
   veniceTtsModel: process.env.VENICE_TTS_MODEL ?? "tts-kokoro",
-  veniceTtsVoice: process.env.VENICE_TTS_VOICE ?? "zf_xiaobei"
+  veniceTtsVoice: process.env.VENICE_TTS_VOICE ?? "zf_xiaobei",
+  vapidPublicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+  vapidSubject: process.env.VAPID_SUBJECT ?? "",
 } as const;
 
 export function isSupabaseStoreEnabled() {
@@ -22,6 +25,10 @@ export function isSupabaseAuthEnabled() {
 
 export function isVeniceEnabled() {
   return Boolean(env.veniceApiKey);
+}
+
+export function isPushEnabled() {
+  return Boolean(env.vapidPublicKey && env.vapidPrivateKey && env.vapidSubject);
 }
 
 export function isDevAuthFallbackEnabled() {

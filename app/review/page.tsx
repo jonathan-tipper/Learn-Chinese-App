@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   CheckCircle2,
@@ -14,6 +14,8 @@ import {
   XCircle
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
+import { drainQueue, enqueueGrade } from "@/lib/srs-queue";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,6 +77,20 @@ export default function ReviewPage() {
 
   const progressPct = totalLoaded > 0 ? (completedCount / totalLoaded) * 100 : 0;
 
+  // Drain any queued grades the moment the browser comes back online
+  useEffect(() => {
+    async function handleOnline() {
+      const sent = await drainQueue();
+      if (sent > 0) {
+        setStatus({ type: "success", message: `Synced ${sent} offline grade${sent > 1 ? "s" : ""}.` });
+      }
+    }
+    window.addEventListener("online", handleOnline);
+    // Also drain immediately in case we loaded the page with queued grades and are now online
+    if (navigator.onLine) void handleOnline();
+    return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
   async function loadDue() {
     setIsLoading(true);
     const response = await authedFetch("/api/srs/next?limit=5");
@@ -99,22 +115,34 @@ export default function ReviewPage() {
   }
 
   async function grade(cardId: string, gradeValue: Grade) {
-    const response = await authedFetch("/api/srs/grade", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cardId, grade: gradeValue })
-    });
-
-    if (!response.ok) {
-      setStatus({ type: "error", message: "Please sign in to grade cards." });
-      return;
-    }
-
-    const data = await response.json();
+    // Optimistically remove the card and bump the counter regardless of outcome
     setCompletedCount((c) => c + 1);
     setCards((prev) => prev.filter((c) => c.id !== cardId));
-    const next = data.nextDueAt ? new Date(data.nextDueAt).toLocaleDateString() : "soon";
-    setStatus({ type: "success", message: `Graded "${gradeValue}" — next review: ${next}` });
+
+    try {
+      const response = await authedFetch("/api/srs/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId, grade: gradeValue })
+      });
+
+      if (!response.ok) {
+        setStatus({ type: "error", message: "Please sign in to grade cards." });
+        return;
+      }
+
+      const data = await response.json();
+      const next = data.nextDueAt ? new Date(data.nextDueAt).toLocaleDateString() : "soon";
+      setStatus({ type: "success", message: `Graded "${gradeValue}" — next review: ${next}` });
+    } catch {
+      // Network error — queue for later replay
+      const supabase = getSupabaseBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        await enqueueGrade({ cardId, grade: gradeValue, token: session.access_token });
+      }
+      setStatus({ type: "idle", message: "You're offline — grade saved and will sync automatically." });
+    }
   }
 
   function toggleReveal(cardId: string) {
