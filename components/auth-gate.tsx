@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 
 const PUBLIC_PATHS = new Set(["/login"]);
@@ -24,11 +25,25 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) {
-    return <section className="card">Checking sign-in status...</section>;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm">Checking sign-in status…</p>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
-    return <section className="card">Redirecting to login...</section>;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm">Redirecting to login…</p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

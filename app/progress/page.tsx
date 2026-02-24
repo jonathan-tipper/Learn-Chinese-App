@@ -1,7 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  BarChart2,
+  BookOpen,
+  Calendar,
+  Clock,
+  Flame,
+  RefreshCw,
+  Loader2,
+  TrendingUp,
+  AlertTriangle
+} from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 type Summary = {
   totalSessions: number;
@@ -12,11 +28,49 @@ type Summary = {
   weakAreas: string[];
 };
 
+const STAT_CARDS = [
+  {
+    key: "totalSessions" as const,
+    label: "Sessions",
+    icon: Calendar,
+    format: (v: number) => String(v),
+    desc: "total sessions",
+    color: "text-foreground"
+  },
+  {
+    key: "totalMinutes" as const,
+    label: "Minutes",
+    icon: Clock,
+    format: (v: number) => v >= 60 ? `${Math.floor(v / 60)}h ${v % 60}m` : `${v}m`,
+    desc: "practice time",
+    color: "text-foreground"
+  },
+  {
+    key: "streakDays" as const,
+    label: "Streak",
+    icon: Flame,
+    format: (v: number) => `${v}d`,
+    desc: "days in a row",
+    color: "text-orange-500"
+  },
+  {
+    key: "vocabLearning" as const,
+    label: "Vocabulary",
+    icon: BookOpen,
+    format: (v: number) => String(v),
+    desc: "words in learning",
+    color: "text-jade"
+  }
+];
+
 export default function ProgressPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   async function refresh() {
+    setIsLoading(true);
     const response = await authedFetch("/api/progress/summary");
+    setIsLoading(false);
     if (!response.ok) {
       setSummary(null);
       return;
@@ -29,25 +83,149 @@ export default function ProgressPage() {
     refresh();
   }, []);
 
+  const dueCards = summary?.dueCards ?? 0;
+  const weakAreas = summary?.weakAreas ?? [];
+
   return (
-    <section>
-      <h2>Progress & Insights</h2>
-      <button type="button" onClick={refresh}>Refresh</button>
-      <div className="card">
-        <h3>Your week in Mandarin</h3>
-        <ul>
-          <li>Total sessions: {summary?.totalSessions ?? 0}</li>
-          <li>Total minutes: {summary?.totalMinutes ?? 0}</li>
-          <li>Streak days: {summary?.streakDays ?? 0}</li>
-          <li>Vocabulary in learning: {summary?.vocabLearning ?? 0}</li>
-          <li>Due review cards: {summary?.dueCards ?? 0}</li>
-          <li>Weak areas: {(summary?.weakAreas ?? []).join(", ") || "n/a"}</li>
-        </ul>
+    <div className="space-y-8 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Progress</h1>
+          <p className="text-sm text-muted-foreground">Your Mandarin learning journey at a glance.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={isLoading}>
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Refresh
+        </Button>
       </div>
-      <div className="card">
-        <h3>Next-week focus</h3>
-        <p>Short workplace dialogues + polite requests + review of yesterday’s weak cards.</p>
-      </div>
-    </section>
+
+      {/* Stat grid */}
+      {isLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-5">
+                <div className="animate-pulse space-y-2">
+                  <div className="h-4 w-4 rounded bg-muted" />
+                  <div className="h-7 w-16 rounded bg-muted" />
+                  <div className="h-3 w-20 rounded bg-muted" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {STAT_CARDS.map(({ key, label: _label, icon: Icon, format, desc, color }) => (
+            <Card key={key}>
+              <CardContent className="p-5 space-y-2">
+                <Icon className={cn("h-4 w-4", color)} />
+                <div>
+                  <p className={cn("text-2xl font-bold leading-tight", color)}>
+                    {format(summary?.[key] ?? 0)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Due cards banner */}
+      {!isLoading && dueCards > 0 && (
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20">
+          <CardContent className="flex items-center justify-between p-4 gap-3">
+            <div className="flex items-center gap-3">
+              <BookOpen className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                  {dueCards} card{dueCards !== 1 ? "s" : ""} due for review
+                </p>
+                <p className="text-xs text-amber-700/70 dark:text-amber-400/70">
+                  Review them now to keep your memory strong
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/30"
+              asChild
+            >
+              <a href="/review">Review</a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Weekly summary */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">This week in Mandarin</CardTitle>
+          </div>
+          <CardDescription>A snapshot of your recent learning activity.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Sessions completed</span>
+              <span className="font-medium">{summary?.totalSessions ?? 0} / 7</span>
+            </div>
+            <Progress value={Math.min((summary?.totalSessions ?? 0) / 7 * 100, 100)} className="h-1.5" />
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Minutes practiced</span>
+              <span className="font-medium">{summary?.totalMinutes ?? 0} / 70 min</span>
+            </div>
+            <Progress value={Math.min((summary?.totalMinutes ?? 0) / 70 * 100, 100)} className="h-1.5" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Weak areas */}
+      {weakAreas.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <CardTitle className="text-base">Areas to focus on</CardTitle>
+            </div>
+            <CardDescription>These topics need more attention based on your performance.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {weakAreas.map((area) => (
+                <Badge key={area} variant="amber">{area}</Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Next week focus */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Next-week focus</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-foreground leading-relaxed">
+            Short workplace dialogues + polite requests + review of this week&apos;s weak cards.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">Workplace Mandarin</Badge>
+            <Badge variant="secondary">Polite requests</Badge>
+            <Badge variant="secondary">SRS review</Badge>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
