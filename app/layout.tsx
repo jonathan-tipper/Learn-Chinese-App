@@ -4,6 +4,7 @@ import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { SidebarNav, MobileNav, MobileHeader } from "@/components/sidebar-nav";
 import { InstallPrompt } from "@/components/install-prompt";
+import { NotificationPermission } from "@/components/notification-permission";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -62,6 +63,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           {/* PWA install banner */}
           <InstallPrompt />
+          {/* Push notification opt-in (shown from 2nd visit, above install banner) */}
+          <NotificationPermission />
         </AuthProvider>
       </body>
     </html>
