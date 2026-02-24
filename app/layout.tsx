@@ -1,32 +1,44 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import { AuthControls } from "@/components/auth-controls";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { SidebarNav, MobileNav, MobileHeader } from "@/components/sidebar-nav";
+import { InstallPrompt } from "@/components/install-prompt";
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap"
-});
 
 export const metadata: Metadata = {
   title: "Learn Chinese — Mandarin Coach",
-  description: "Agentic, relationship-based Mandarin learning coach powered by AI"
+  description: "Agentic, relationship-based Mandarin learning coach powered by AI",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Mandarin Coach",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2d7d6a",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Inter + Noto Serif SC — loaded via <link> so builds work in offline CI */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap"
           rel="stylesheet"
         />
+        {/* PWA */}
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
       </head>
       <body className="min-h-screen font-sans antialiased bg-background">
         <AuthProvider>
@@ -47,6 +59,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           {/* Mobile bottom nav */}
           <MobileNav />
+
+          {/* PWA install banner */}
+          <InstallPrompt />
         </AuthProvider>
       </body>
     </html>
