@@ -1,36 +1,52 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Inter } from "next/font/google";
 import { AuthControls } from "@/components/auth-controls";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
-import "./styles.css";
+import { SidebarNav, MobileNav, MobileHeader } from "@/components/sidebar-nav";
+import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap"
+});
 
 export const metadata: Metadata = {
-  title: "Learn Chinese Coach",
-  description: "Agentic, relationship-based Mandarin learning coach"
+  title: "Learn Chinese — Mandarin Coach",
+  description: "Agentic, relationship-based Mandarin learning coach powered by AI"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="min-h-screen font-sans antialiased bg-background">
         <AuthProvider>
-          <header className="header">
-            <h1>Learn Chinese v0.1</h1>
-            <nav>
-              <Link href="/">Home</Link>
-              <Link href="/onboarding">Onboarding</Link>
-              <Link href="/chat">Chat</Link>
-              <Link href="/review">Review</Link>
-              <Link href="/memory">Memory</Link>
-              <Link href="/progress">Progress</Link>
-              <Link href="/login">Login</Link>
-            </nav>
-            <AuthControls />
-          </header>
-          <main className="container">
-            <AuthGate>{children}</AuthGate>
-          </main>
+          {/* Desktop sidebar */}
+          <SidebarNav />
+
+          {/* Mobile top header */}
+          <MobileHeader />
+
+          {/* Main content area */}
+          <div className="lg:pl-56">
+            <main className="min-h-screen pb-20 lg:pb-0">
+              <div className="mx-auto max-w-4xl px-4 py-6 lg:px-8 lg:py-8">
+                <AuthGate>{children}</AuthGate>
+              </div>
+            </main>
+          </div>
+
+          {/* Mobile bottom nav */}
+          <MobileNav />
         </AuthProvider>
       </body>
     </html>
