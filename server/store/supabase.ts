@@ -11,7 +11,7 @@ import type {
 import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
-import { computeScheduling } from "@/server/store/srs";
+import { computeScheduling, parseReviewItem } from "@/server/store/srs";
 
 const nowIso = () => new Date().toISOString();
 const from = (client: ReturnType<typeof getSupabaseServiceClient>, name: string) =>
@@ -350,19 +350,25 @@ export async function addSrsCards(userId: string, items: string[]) {
 
   const client = getSupabaseServiceClient();
   const now = nowIso();
-  const rows = items.map((item) => ({
-    id: randomUUID(),
-    user_id: userId,
-    type: "vocab",
-    prompt: `Translate or use: ${item}`,
-    answer: item,
-    hints: ["Recall context from your last session"],
-    tags: ["auto-generated"],
-    ease: 2.5,
-    interval: 1,
-    next_due_at: now,
-    updated_at: now
-  }));
+  const rows = items.map((item) => {
+    const parsed = parseReviewItem(item);
+    const answer = parsed.english
+      ? (parsed.pinyin ? `${parsed.pinyin} — ${parsed.english}` : parsed.english)
+      : item;
+    return {
+      id: randomUUID(),
+      user_id: userId,
+      type: "vocab",
+      prompt: parsed.chinese,
+      answer,
+      hints: ["Recall context from your last session"],
+      tags: ["auto-generated"],
+      ease: 2.5,
+      interval: 1,
+      next_due_at: now,
+      updated_at: now
+    };
+  });
 
   const { data, error } = await client
     .schema(env.supabaseDbSchema)
