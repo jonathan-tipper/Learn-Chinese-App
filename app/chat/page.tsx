@@ -60,7 +60,7 @@ function parseSse(raw: string) {
 }
 
 function CoachBubble({ turn }: { turn: ChatTurn }) {
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
   const hasDetails = (turn.assistant?.keyPoints?.length ?? 0) > 0
     || (turn.assistant?.examples?.length ?? 0) > 0
     || !!turn.assistant?.microExercise;
