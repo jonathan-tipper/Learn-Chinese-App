@@ -9,7 +9,7 @@ import type {
   SrsGrade,
   TutorStructuredResponse
 } from "@/lib/types";
-import { computeScheduling } from "@/server/store/srs";
+import { computeScheduling, parseReviewItem } from "@/server/store/srs";
 
 const now = () => new Date().toISOString();
 
@@ -101,17 +101,23 @@ export function deleteMemory(userId: string, memoryId: string) {
 
 export function addSrsCards(userId: string, items: string[]) {
   const list = srsCards.get(userId) ?? [];
-  const created = items.map<SrsCard>((item) => ({
-    id: randomUUID(),
-    userId,
-    prompt: `Translate or use: ${item}`,
-    answer: item,
-    hints: ["Recall context from your last session"],
-    tags: ["auto-generated"],
-    ease: 2.5,
-    interval: 1,
-    nextDueAt: now()
-  }));
+  const created = items.map<SrsCard>((item) => {
+    const parsed = parseReviewItem(item);
+    const answer = parsed.english
+      ? (parsed.pinyin ? `${parsed.pinyin} — ${parsed.english}` : parsed.english)
+      : item;
+    return {
+      id: randomUUID(),
+      userId,
+      prompt: parsed.chinese,
+      answer,
+      hints: ["Recall context from your last session"],
+      tags: ["auto-generated"],
+      ease: 2.5,
+      interval: 1,
+      nextDueAt: now()
+    };
+  });
   srsCards.set(userId, [...list, ...created]);
   return created;
 }

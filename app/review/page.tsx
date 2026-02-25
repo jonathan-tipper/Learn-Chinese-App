@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
   Loader2,
   Mic,
-  MicOff,
   RefreshCw,
   RotateCcw,
   Volume2,
@@ -54,6 +53,20 @@ const GRADE_CONFIG = {
 
 type Grade = keyof typeof GRADE_CONFIG;
 
+const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
+const LEGACY_PREFIX_RE = /^Translate or use:\s*/i;
+
+/** Strip the old "Translate or use: ..." prefix and any embedded English/pinyin from a prompt. */
+function cleanPromptForDisplay(prompt: string): string {
+  let cleaned = prompt.replace(LEGACY_PREFIX_RE, "");
+  // "请 (qǐng) - please" → "请"
+  const match = cleaned.match(/^(.+?)\s*(?:\([^)]+\))?\s*[-—–]\s*.+$/);
+  if (match && CJK_RE.test(match[1])) {
+    cleaned = match[1].trim();
+  }
+  return cleaned;
+}
+
 export default function ReviewPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [completedCount, setCompletedCount] = useState(0);
@@ -69,6 +82,33 @@ export default function ReviewPage() {
   const [characterInput, setCharacterInput] = useState("");
   const [characterIndex, setCharacterIndex] = useState(0);
   const [charFeedback, setCharFeedback] = useState<"correct" | "wrong" | null>(null);
+  const [ttsLoadingId, setTtsLoadingId] = useState<string | null>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  async function playTts(cardId: string, text: string) {
+    // Stop any currently playing audio
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current = null;
+    }
+    setTtsLoadingId(cardId);
+    try {
+      const response = await fetch("/api/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, speed: 0.85 })
+      });
+      if (!response.ok) throw new Error("TTS request failed");
+      const data = await response.json();
+      const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+      ttsAudioRef.current = audio;
+      await audio.play();
+    } catch {
+      setStatus({ type: "error", message: "Could not play audio." });
+    } finally {
+      setTtsLoadingId(null);
+    }
+  }
 
   const currentCharacter = useMemo(
     () => characterQuestions[characterIndex % characterQuestions.length],
@@ -253,16 +293,11 @@ export default function ReviewPage() {
                 )}
               >
                 <CardContent className="p-5 space-y-4">
-                  {/* Prompt */}
+                  {/* Prompt — Chinese only, no spoilers */}
                   <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Prompt</p>
-                        <p className="text-xl font-semibold leading-tight">{card.prompt}</p>
-                      </div>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground">
-                        <Volume2 className="h-4 w-4" />
-                      </Button>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Translate</p>
+                      <p className="hanzi text-2xl font-semibold leading-tight">{cleanPromptForDisplay(card.prompt)}</p>
                     </div>
                     {card.hints?.[0] && (
                       <p className="text-xs text-muted-foreground">
@@ -283,7 +318,25 @@ export default function ReviewPage() {
                     )}
                   >
                     {revealed ? (
-                      <span className="text-base font-semibold">{card.answer}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-base font-semibold">{card.answer}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void playTts(card.id, cleanPromptForDisplay(card.prompt));
+                          }}
+                          disabled={ttsLoadingId === card.id}
+                        >
+                          {ttsLoadingId === card.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Volume2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     ) : (
                       <span className="flex items-center justify-center gap-2">
                         <ChevronRight className="h-4 w-4" />
