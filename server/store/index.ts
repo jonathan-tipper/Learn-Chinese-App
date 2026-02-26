@@ -78,4 +78,14 @@ export async function computeProgressSummary(userId: string) {
   return shouldUseSupabaseStore() ? supabase.computeProgressSummary(userId) : inMemory.computeProgressSummary(userId);
 }
 
+/**
+ * Return memories semantically similar to `queryText`.
+ * Only available when Supabase + pgvector are configured; returns [] otherwise.
+ */
+export async function searchMemoriesBySimilarity(userId: string, queryText: string, limit = 5) {
+  return shouldUseSupabaseStore()
+    ? supabase.searchMemoriesBySimilarity(userId, queryText, limit)
+    : [];
+}
+
 export { synthesizeTutorResponse };

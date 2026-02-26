@@ -3,7 +3,7 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { env } from "@/lib/env";
 import type { TutorStructuredResponse } from "@/lib/types";
 import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
-import { getProfile, listMemories, listSessionMessages } from "@/server/store";
+import { getProfile, listMemories, listSessionMessages, searchMemoriesBySimilarity } from "@/server/store";
 import type { ModelSelectionMode } from "@/lib/venice";
 
 export interface LangGraphInput {
@@ -62,13 +62,18 @@ async function compileTutorGraph() {
 
   const graph = new StateGraph(TutorState)
     .addNode("contextLoader", async (state) => {
-      const [profile, memories, sessionMessages] = await Promise.all([
+      const [profile, semanticMemories, sessionMessages] = await Promise.all([
         getProfile(state.userId),
-        listMemories(state.userId),
+        searchMemoriesBySimilarity(state.userId, state.message, 5),
         listSessionMessages(state.sessionId)
       ]);
 
-      const memoryContext = memories.slice(0, 5).map((m) => `${m.key}: ${m.value}`);
+      // Fall back to recency-based retrieval when embeddings are unavailable.
+      const memories = semanticMemories.length > 0
+        ? semanticMemories
+        : (await listMemories(state.userId)).slice(0, 5);
+
+      const memoryContext = memories.map((m) => `${m.key}: ${m.value}`);
       const recentUserMessages = sessionMessages
         .filter((m) => m.role === "user")
         .slice(-3)

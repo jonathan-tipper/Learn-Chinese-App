@@ -1,7 +1,7 @@
 import type { TutorStructuredResponse } from "@/lib/types";
 import { runTutorGraphWithLangGraph } from "@/server/agents/langgraphRuntime";
 import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
-import { getProfile, listMemories, listSessionMessages } from "@/server/store";
+import { getProfile, listMemories, listSessionMessages, searchMemoriesBySimilarity } from "@/server/store";
 import type { ModelSelectionMode } from "@/lib/venice";
 
 export interface GraphInput {
@@ -24,12 +24,18 @@ async function runFallbackGraph(input: GraphInput): Promise<GraphOutput> {
   const nodesExecuted: string[] = [];
 
   nodesExecuted.push("ContextLoader");
-  const [profile, memories, sessionMessages] = await Promise.all([
+  const [profile, semanticMemories, sessionMessages] = await Promise.all([
     getProfile(input.userId),
-    listMemories(input.userId),
+    searchMemoriesBySimilarity(input.userId, input.message, 5),
     listSessionMessages(input.sessionId)
   ]);
-  const memoryContext = memories.slice(0, 5).map((m) => `${m.key}: ${m.value}`);
+
+  // Fall back to recency-based retrieval when embeddings are unavailable.
+  const memories = semanticMemories.length > 0
+    ? semanticMemories
+    : (await listMemories(input.userId)).slice(0, 5);
+
+  const memoryContext = memories.map((m) => `${m.key}: ${m.value}`);
   const recentUserMessages = sessionMessages
     .filter((m) => m.role === "user")
     .slice(-3)

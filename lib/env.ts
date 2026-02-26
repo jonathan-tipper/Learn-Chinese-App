@@ -10,6 +10,9 @@ export const env = {
   veniceComplexModel: process.env.VENICE_COMPLEX_MODEL ?? "zai-org-glm-5",
   veniceTtsModel: process.env.VENICE_TTS_MODEL ?? "tts-kokoro",
   veniceTtsVoice: process.env.VENICE_TTS_VOICE ?? "zf_xiaobei",
+  // Embedding model for semantic memory search (must output 1536-dim vectors).
+  // Leave unset to disable embeddings and fall back to recency-based retrieval.
+  veniceEmbeddingModel: process.env.VENICE_EMBEDDING_MODEL ?? "",
   vapidPublicKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "",
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
   vapidSubject: process.env.VAPID_SUBJECT ?? "",

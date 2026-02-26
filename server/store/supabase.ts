@@ -12,6 +12,7 @@ import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
 import { computeScheduling, parseReviewItem } from "@/server/store/srs";
+import { generateEmbedding } from "@/server/store/embeddings";
 
 const nowIso = () => new Date().toISOString();
 const from = (client: ReturnType<typeof getSupabaseServiceClient>, name: string) =>
@@ -326,7 +327,48 @@ export async function addMemory(userId: string, key: string, value: string, type
   });
 
   if (error) throw error;
+
+  // Generate and store embedding asynchronously — don't block the response.
+  generateEmbedding(`${key}: ${value}`).then((embedding) => {
+    if (!embedding) return;
+    client
+      .schema(env.supabaseDbSchema)
+      .from("memories")
+      .update({ embedding: JSON.stringify(embedding) })
+      .eq("id", item.id)
+      .then(() => {/* fire-and-forget */});
+  });
+
   return item;
+}
+
+type MatchMemoryRow = MemoryRow & { similarity: number };
+
+/**
+ * Return up to `limit` memories whose embedding is most cosine-similar to the
+ * given query text.  Falls back to an empty array when embeddings are
+ * unavailable so the caller can degrade to recency-based retrieval.
+ */
+export async function searchMemoriesBySimilarity(
+  userId: string,
+  queryText: string,
+  limit = 5
+): Promise<MemoryItem[]> {
+  const embedding = await generateEmbedding(queryText);
+  if (!embedding) return [];
+
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .rpc("match_memories", {
+      query_embedding: JSON.stringify(embedding),
+      p_user_id: userId,
+      match_count: limit
+    })
+    .returns<MatchMemoryRow[]>();
+
+  if (error || !data) return [];
+  return data.map(mapMemory);
 }
 
 export async function deleteMemory(userId: string, memoryId: string) {
