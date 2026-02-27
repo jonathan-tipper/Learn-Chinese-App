@@ -329,15 +329,16 @@ export async function addMemory(userId: string, key: string, value: string, type
   if (error) throw error;
 
   // Generate and store embedding asynchronously — don't block the response.
-  generateEmbedding(`${key}: ${value}`).then((embedding) => {
+  // `void` suppresses no-floating-promises; errors inside are intentionally swallowed.
+  void (async () => {
+    const embedding = await generateEmbedding(`${key}: ${value}`);
     if (!embedding) return;
-    client
+    await client
       .schema(env.supabaseDbSchema)
       .from("memories")
       .update({ embedding: JSON.stringify(embedding) })
-      .eq("id", item.id)
-      .then(() => {/* fire-and-forget */});
-  });
+      .eq("id", item.id);
+  })();
 
   return item;
 }
@@ -358,17 +359,16 @@ export async function searchMemoriesBySimilarity(
   if (!embedding) return [];
 
   const client = getSupabaseServiceClient();
-  const { data, error } = await client
+  const result = await client
     .schema(env.supabaseDbSchema)
     .rpc("match_memories", {
       query_embedding: JSON.stringify(embedding),
       p_user_id: userId,
       match_count: limit
-    })
-    .returns<MatchMemoryRow[]>();
+    });
 
-  if (error || !data) return [];
-  return data.map(mapMemory);
+  if (result.error || !result.data) return [];
+  return (result.data as MatchMemoryRow[]).map(mapMemory);
 }
 
 export async function deleteMemory(userId: string, memoryId: string) {
