@@ -27,6 +27,16 @@ export function parseReviewItem(item: string): { chinese: string; pinyin: string
     }
   }
 
+  // Pattern: "Chinese (English meaning)" — no dash, English in trailing parens
+  const trailingParens = item.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (trailingParens) {
+    const left = trailingParens[1].trim();
+    const right = trailingParens[2].trim();
+    if (CJK_RE.test(left) && !CJK_RE.test(right)) {
+      return { chinese: left, pinyin: "", english: right };
+    }
+  }
+
   // No separable English — return the whole item as Chinese
   return { chinese: item, pinyin: "", english: "" };
 }

@@ -56,15 +56,48 @@ type Grade = keyof typeof GRADE_CONFIG;
 const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 const LEGACY_PREFIX_RE = /^Translate or use:\s*/i;
 
-/** Strip the old "Translate or use: ..." prefix and any embedded English/pinyin from a prompt. */
+/** Strip legacy prefix and embedded English/pinyin, leaving only the Chinese/hanzi for the prompt. */
 function cleanPromptForDisplay(prompt: string): string {
   let cleaned = prompt.replace(LEGACY_PREFIX_RE, "");
   // "请 (qǐng) - please" → "请"
-  const match = cleaned.match(/^(.+?)\s*(?:\([^)]+\))?\s*[-—–]\s*.+$/);
-  if (match && CJK_RE.test(match[1])) {
-    cleaned = match[1].trim();
+  const dashMatch = cleaned.match(/^(.+?)\s*(?:\([^)]+\))?\s*[-—–]\s*.+$/);
+  if (dashMatch && CJK_RE.test(dashMatch[1])) {
+    return dashMatch[1].trim();
+  }
+  // "请 (please)" — no dash, trailing parens
+  const parenMatch = cleaned.match(/^(.+?)\s*\([^)]+\)\s*$/);
+  if (parenMatch && CJK_RE.test(parenMatch[1])) {
+    return parenMatch[1].trim();
   }
   return cleaned;
+}
+
+/**
+ * Clean the answer for display in the reveal panel.
+ * For legacy cards where answer equals the full "Chinese (pinyin) - English" string,
+ * extract just the pinyin + English part so the Chinese is not repeated in the reveal.
+ */
+function cleanAnswerForDisplay(answer: string, prompt: string): string {
+  const strippedPrompt = cleanPromptForDisplay(prompt);
+  // If answer starts with the same Chinese as the prompt, strip it
+  if (strippedPrompt && answer.startsWith(strippedPrompt)) {
+    const remainder = answer.slice(strippedPrompt.length).replace(/^\s*[\u2014\-—–(]\s*/, "").trim();
+    if (remainder) return remainder;
+  }
+  // "Chinese (pinyin) - English" stored as answer → extract "pinyin - English"
+  const fullMatch = answer.match(/^.+?\s*\(([^)]+)\)\s*[-—–]\s*(.+)$/);
+  if (fullMatch && CJK_RE.test(answer.slice(0, 2))) {
+    return `${fullMatch[1]} — ${fullMatch[2]}`;
+  }
+  return answer;
+}
+
+/** True when prompt and answer carry the same information (malformed/legacy card). */
+function isMalformedCard(prompt: string, answer: string): boolean {
+  const cleanedPrompt = cleanPromptForDisplay(prompt);
+  const cleanedAnswer = cleanAnswerForDisplay(answer, prompt);
+  // Both sides are identical, or the answer is purely CJK (no English revealed)
+  return cleanedPrompt === cleanedAnswer || (CJK_RE.test(cleanedAnswer) && !/[a-zA-Z]/.test(cleanedAnswer));
 }
 
 export default function ReviewPage() {
@@ -284,6 +317,9 @@ export default function ReviewPage() {
         <div className="space-y-3">
           {cards.map((card) => {
             const revealed = revealedCards.has(card.id);
+            const displayPrompt = cleanPromptForDisplay(card.prompt);
+            const displayAnswer = cleanAnswerForDisplay(card.answer, card.prompt);
+            const malformed = isMalformedCard(card.prompt, card.answer);
             return (
               <Card
                 key={card.id}
@@ -297,7 +333,7 @@ export default function ReviewPage() {
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Translate</p>
-                      <p className="hanzi text-2xl font-semibold leading-tight">{cleanPromptForDisplay(card.prompt)}</p>
+                      <p className="hanzi text-2xl font-semibold leading-tight">{displayPrompt}</p>
                     </div>
                     {card.hints?.[0] && (
                       <p className="text-xs text-muted-foreground">
@@ -319,14 +355,20 @@ export default function ReviewPage() {
                   >
                     {revealed ? (
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-base font-semibold">{card.answer}</span>
+                        {malformed ? (
+                          <span className="text-xs text-muted-foreground italic">
+                            Card data incomplete — grade and a fresh card will replace it.
+                          </span>
+                        ) : (
+                          <span className="text-base font-semibold">{displayAnswer}</span>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
-                            void playTts(card.id, cleanPromptForDisplay(card.prompt));
+                            void playTts(card.id, displayPrompt);
                           }}
                           disabled={ttsLoadingId === card.id}
                         >
