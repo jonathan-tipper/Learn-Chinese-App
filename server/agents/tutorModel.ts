@@ -97,7 +97,10 @@ function buildPrompt(input: {
     `Verify mode: ${input.verifyMode ? "enabled" : "disabled"}`,
     "Teach Mandarin in-context. Include concise hanzi + pinyin + English where useful.",
     "Output JSON only with keys: answer, keyPoints, examples, microExercise, suggestedReviewItems.",
-    "Constraints: keyPoints max 4 items, examples max 6 items, suggestedReviewItems max 10 items."
+    "Constraints: keyPoints max 4 items, examples max 6 items, suggestedReviewItems max 10 items.",
+    "IMPORTANT: Each suggestedReviewItem MUST use this exact format: 'hanzi (pinyin) - English meaning'.",
+    "Examples of correct suggestedReviewItems: '请 (qǐng) - please', '谢谢 (xiè xiè) - thank you', '咖啡 (kā fēi) - coffee'.",
+    "Only include individual vocabulary words or short phrases in suggestedReviewItems — NOT full sentences, NOT grammar concepts, NOT English-only text."
   ].join("\n\n");
 }
 

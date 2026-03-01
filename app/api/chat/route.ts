@@ -41,26 +41,16 @@ function formatIntent(answer: string, intent?: string) {
   return answer;
 }
 
-function normalizeReviewItem(value: string) {
-  return value
-    .replace(/\s+\([^)]*\)\s*$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function deriveReviewItems(structured: TutorStructuredResponse, userMessage: string, saveToReview?: boolean) {
-  const candidates = [
-    ...structured.suggestedReviewItems,
-    ...structured.examples,
-    ...structured.keyPoints.map((point) => `Concept: ${point}`),
-    structured.microExercise
-  ];
+  // Only use suggestedReviewItems — the LLM formats these as "hanzi (pinyin) - English".
+  // examples/keyPoints/microExercise are teaching aids, not SRS vocab flashcards.
+  const candidates = [...structured.suggestedReviewItems];
 
   if (saveToReview) {
     candidates.push(userMessage);
   }
 
-  return Array.from(new Set(candidates.map(normalizeReviewItem).filter(Boolean))).slice(0, 20);
+  return Array.from(new Set(candidates.map((v) => v.trim()).filter(Boolean))).slice(0, 20);
 }
 
 function chunkText(content: string, chunkSize = 90) {
