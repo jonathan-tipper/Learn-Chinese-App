@@ -34,6 +34,10 @@ export async function listSessionsByUser(userId: string) {
   return shouldUseSupabaseStore() ? supabase.listSessionsByUser(userId) : inMemory.listSessionsByUser(userId);
 }
 
+export async function getLastCompletedSession(userId: string) {
+  return shouldUseSupabaseStore() ? supabase.getLastCompletedSession(userId) : inMemory.getLastCompletedSession(userId);
+}
+
 export async function appendMessage(sessionId: string, role: MessageRecord["role"], content: string) {
   return shouldUseSupabaseStore() ? supabase.appendMessage(sessionId, role, content) : inMemory.appendMessage(sessionId, role, content);
 }

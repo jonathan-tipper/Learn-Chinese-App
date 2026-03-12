@@ -462,6 +462,22 @@ export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
   if (error) throw error;
 }
 
+export async function getLastCompletedSession(userId: string): Promise<SessionRecord | null> {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, user_id, mode, started_at, ended_at, summary, metrics_json")
+    .eq("user_id", userId)
+    .not("ended_at", "is", null)
+    .order("ended_at", { ascending: false })
+    .limit(1)
+    .returns<SessionRow[]>();
+
+  if (error) throw error;
+  return data?.[0] ? mapSession(data[0]) : null;
+}
+
 export async function computeProgressSummary(userId: string) {
   const sessions = await listSessionsByUser(userId);
   const cards = await getAllCards(userId);
@@ -474,12 +490,32 @@ export async function computeProgressSummary(userId: string) {
       .map((session) => (session.endedAt ?? session.startedAt).slice(0, 10))
   ).size;
 
+  // Derive weak areas from cards that are struggling (ease < 2.0 or lastResult is "again"/"hard")
+  const strugglingCards = cards.filter(
+    (card) => card.ease < 2.0 || card.lastResult === "again" || card.lastResult === "hard"
+  );
+  const weakAreaSet = new Set<string>();
+  for (const card of strugglingCards) {
+    for (const tag of card.tags) {
+      if (tag && tag !== "auto-generated") weakAreaSet.add(tag);
+    }
+    // Heuristic: if the answer mentions tones (numbers like ā/á/ǎ/à or tone markers), flag tone pairs
+    if (/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(card.prompt) && card.lastResult === "again") {
+      weakAreaSet.add("tone pairs");
+    }
+  }
+  // If no specific weak areas detected but >20% of cards are struggling, add generic area
+  const weakAreas = Array.from(weakAreaSet).slice(0, 4);
+  if (weakAreas.length === 0 && cards.length > 0 && strugglingCards.length / cards.length > 0.2) {
+    weakAreas.push("recently introduced vocabulary");
+  }
+
   return {
     totalSessions: sessions.length,
     totalMinutes,
     streakDays,
     vocabLearning: cards.length,
     dueCards: dueCards.length,
-    weakAreas: ["measure words", "tone pairs"]
+    weakAreas
   };
 }
