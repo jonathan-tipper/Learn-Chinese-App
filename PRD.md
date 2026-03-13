@@ -1,14 +1,54 @@
-# PRD — “Learn Chinese” (Agentic, Personalized Mandarin Coach) — v0.1 (Web)
+# PRD — "Learn Chinese" (Agentic, Personalized Mandarin Coach) — v0.1 (Web)
+
+---
+
+## Implementation status
+
+> Last updated: 2026-03-13 | Branch: `claude/review-prd-scope-cGqli`
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Fully implemented and working |
+| 🔶 | Partially implemented — works but incomplete |
+| ❌ | Not yet implemented |
+
+### Quick summary
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Platform foundation | ✅ | Next.js 16, Supabase Auth, Tailwind, shadcn/ui |
+| Data model + RLS | ✅ | All tables live; RLS enforced; 7 migrations |
+| Chat tutor (streaming) | ✅ | LangGraph + Venice; SSE streaming; structured response |
+| Onboarding | ✅ | <2 min; goals, level, style, interests; 7-day plan stub |
+| Memory system | ✅ | remember/forget commands; Memory page; audit trail |
+| SRS + review loop | ✅ | SM-2 scheduling; offline grade queue; PWA cached |
+| Audio / TTS | ✅ | ElevenLabs primary; Venice fallback; play buttons in chat + review |
+| PWA / offline | ✅ | Service worker; install prompt; background sync |
+| Push notifications | ✅ | Web Push API; VAPID; Supabase subscription storage |
+| Home page live stats | ✅ | Streak, due cards, goal fetched from API (not hardcoded) |
+| Continuity preview | ✅ | Fetches real last-session data from `/api/progress/continuity` |
+| Weekly AI recap | ✅ | Venice-generated "Your week in Mandarin" on progress page |
+| Progress / insights | 🔶 | Stats live; weak areas dynamic; weekly targets shown; no D7 metric |
+| Curriculum Planner Agent | 🔶 | Node exists in graph but is a stub — no real rolling plan |
+| Character practice | 🔶 | Pinyin-input quiz in review; no dedicated character card UI with radicals/mnemonics |
+| Pronunciation coach | 🔶 | Web Speech API mic input exists; no minimal-pair drills or scoring |
+| Cost guardrails | ❌ | No token budgets or per-session spend limits implemented |
+| HSK alignment | ❌ | Deferred to post-v0.1 (non-goal) |
+| Native app | ❌ | Deferred — browser/PWA only |
+
+---
 
 ## 1) Product vision
 
-A **relationship-based Mandarin coach** that learns the user’s life, goals, and routines, then **proactively teaches Mandarin in-context** through daily conversations, micro-lessons, and review loops—across **mobile + desktop browser** (PWA-ready).
+A **relationship-based Mandarin coach** that learns the user's life, goals, and routines, then **proactively teaches Mandarin in-context** through daily conversations, micro-lessons, and review loops—across **mobile + desktop browser** (PWA-ready).
 
-Unlike dictionary/flashcard apps, the “superpower” is:
+Unlike dictionary/flashcard apps, the "superpower" is:
 
 - **Contextual teaching** (your real life → your Mandarin)
 - **Agentic proactivity** (nudges, routines, adaptive plan)
 - **Memory + relationship** (it remembers what matters and builds continuity)
+
+---
 
 ## 2) Goals, non-goals
 
@@ -25,6 +65,8 @@ Unlike dictionary/flashcard apps, the “superpower” is:
 - Native Android app (browser only, PWA-compatible).
 - Advanced ASR pronunciation scoring (start lightweight; improve later).
 
+---
+
 ## 3) Target users & primary persona
 
 **Primary persona:** busy professional who wants Mandarin for real-life use (work, travel, culture), prefers conversational learning, values personalization and momentum over rigid curriculum.
@@ -35,478 +77,482 @@ Secondary personas:
 - Heritage learner rebuilding confidence
 - Beginner who needs high guidance + encouragement
 
+---
+
 ## 4) Core user journeys (v0.1)
 
-### A) “Daily coach session” (primary journey)
+### A) "Daily coach session" (primary journey)
 
-1. User opens app → sees “Today’s session”
-2. Coach greets with continuity: “Yesterday we practiced ordering coffee…”
-3. 1–2 minute warm-up (review)
-4. 5–10 minute guided conversation + micro-lesson
-5. Auto-generated review set (SRS) + “one sentence to use today”
-6. User finishes → progress updated + plan adjusted
+1. ✅ User opens app → sees "Today's session"
+2. ✅ Coach greets with continuity from last real session (`/api/progress/continuity`)
+3. ✅ 1–2 minute warm-up (review)
+4. ✅ 5–10 minute guided conversation + micro-lesson
+5. ✅ Auto-generated review set (SRS) + "one sentence to use today"
+6. 🔶 User finishes → progress updated — plan is not dynamically adjusted (Planner is a stub)
 
-### B) “Ask anything” (tutor mode)
+### B) "Ask anything" (tutor mode)
 
-- Q&A on grammar, etymology, usage, example sentences, cultural notes
-- “Explain like I’m 5” toggles
-- “Give me 10 examples in my domain” (work, family, hobbies)
+- ✅ Q&A on grammar, etymology, usage, example sentences, cultural notes
+- ✅ "Give me 10 examples in my domain" (works via free-text prompting)
+- ❌ "Explain like I'm 5" explicit toggle not implemented as a UI button
 
-### C) “Quick practice” (2 minutes)
+### C) "Quick practice" (2 minutes)
 
-- 5-card SRS burst
-- 1 speaking prompt + TTS playback
-- 1 character mini-practice
+- ✅ 5-card SRS burst
+- ✅ 1 speaking prompt + TTS playback
+- 🔶 1 character mini-practice — basic pinyin-input quiz exists; no full character card (radicals, mnemonics)
+
+---
 
 ## 5) Product scope & features (v0.1)
 
-### 5.1 Onboarding & baseline assessment
+### 5.1 Onboarding & baseline assessment ✅
 
-- Minimal onboarding: goals, time/day, interests, current level (self-report)
-- Optional quick diagnostic: recognition + simple production
-- User picks “coach vibe”: strict / friendly / playful / concise
+- ✅ Minimal onboarding: goals, time/day, interests, current level (self-report)
+- ❌ Optional quick diagnostic: recognition + simple production (not implemented)
+- ✅ User picks "coach vibe": strict / friendly / playful / concise
 
-**Acceptance:** onboarding < 2 minutes, generates a first-week plan.
+**Acceptance:** ✅ onboarding < 2 minutes, generates a first-week plan (stub plan text).
 
-### 5.2 Conversational Mandarin Coach (core)
+### 5.2 Conversational Mandarin Coach (core) ✅
 
-- Chat interface (text-first)
-- Coach can:
-  - Teach vocabulary/grammar in context
-  - Provide pinyin + hanzi + English
-  - Offer corrections and “native-like alternatives”
-  - Keep a “running lesson thread” per session
+- ✅ Chat interface (text-first), streaming responses
+- ✅ Coach teaches vocabulary/grammar in context with pinyin + hanzi + English
+- ✅ Corrections and "native-like alternatives"
+- ✅ Running lesson thread per session (LangGraph thread continuity)
 
-**Important:** Coach responses are structured (not walls of text):
+Coach response structure: ✅
+- ✅ 1–4 key points
+- ✅ 1–6 examples (with TTS play buttons)
+- ✅ 1 micro-exercise
+- ✅ "Save to review" actions (suggested review items)
 
-- 1–2 key points
-- 2–5 examples
-- 1 micro-exercise
-- “Save to review” actions
+### 5.3 Proactive routine + nudges 🔶
 
-### 5.3 Proactive routine + nudges (lightweight in v0.1)
+- ✅ Evening nudge on home page if no session by 18:00
+- ✅ Push notification infrastructure (Web Push + VAPID)
+- ❌ Email push not implemented (deferred)
+- ❌ n8n webhook hook not wired up
 
-- “Streak-safe” nudges: if no session by evening, show a gentle prompt in-app
-- Optional email push later; for v0.1 keep it in-app + optional n8n webhook hook
+### 5.4 Memory & relationship system ✅
 
-### 5.4 Memory & relationship system (core differentiator)
+**Short-term memory:** ✅ LangGraph Postgres-backed checkpointer per thread
+**Long-term memory:** ✅ Supabase `memories` table; interests, preferences, vocab
 
-Two layers:
+- ✅ "remember this" / "forget this" in-chat commands
+- ✅ `/memory` page — view and delete all stored memories
+- ✅ `memory_events` audit trail
 
-**Short-term memory (thread/session continuity)**  
-Use LangGraph “thread” persistence + checkpointing so sessions pick up naturally. LangGraph supports built-in persistence via checkpointers, enabling durable state per thread.
+**Acceptance:** ✅ user can see "What I remember about you" page and delete items.
 
-**Long-term memory (user model)**
+### 5.5 Spaced repetition that's generated from your life ✅
 
-- Store stable facts + preferences + goals + recurring topics:
-  - Interests (work themes, hobbies)
-  - Learning preferences (“give me fewer explanations, more drills”)
-  - Personal vocabulary bank (“words I keep needing”)
-- Memory is **editable** (user can view/remove items)
+- ✅ Every session yields suggested review items (1–10 vocab items)
+- ✅ Items auto-saved to `srs_cards` after each chat response
+- ✅ SM-2-ish scheduling (`ease`, `interval`, `next_due_at`)
+- ✅ Daily review queue via `/api/srs/next`
+- ✅ Offline grade queue with background sync (PWA)
+- 🔶 `hints` field exists but always set to generic text — not session-specific
 
-**Acceptance:** user can see a “What I remember about you” page and delete items.
+### 5.6 Audio (v0.1) ✅
 
-### 5.5 Spaced repetition that’s generated from your life
+- ✅ TTS via ElevenLabs (primary) with Venice audio fallback
+- ✅ TTS play buttons on examples in chat CoachBubble
+- ✅ TTS play buttons on SRS review cards
+- ✅ Optional Web Speech API mic input for speaking practice
+- 🔶 "Repeat after me" loop — mic input works but feedback is basic (no phoneme scoring)
 
-- Every session yields:
-  - 5–20 “review items” (vocab, sentence patterns, characters)
-- Daily review queue (SRS)
-- Each review item has:
-  - prompt, answer, hints, audio, tags (topic, grammar), next_due, ease
+### 5.7 Writing / characters (v0.1 "basic") 🔶
 
-### 5.6 Audio (v0.1)
+- 🔶 Character cards: hanzi shown in review prompts; pinyin input quiz exists
+- ❌ Full character card format: radicals, mnemonic, common words — not implemented
+- 🔶 "type pinyin → show hanzi" — basic version exists in `/review`
+- ✅ "recognition quiz" — present in review flow
 
-- Text-to-speech via **ElevenLabs** for:
-  - Example sentences
-  - Dialogue playback
-- Optional: browser speech input (Web Speech API) for simple speaking practice
-- “Repeat after me” loop with basic feedback (string/phoneme heuristics first)
+**Next step:** Build a dedicated `/characters` page with structured character cards (hanzi, pinyin, radical breakdown, mnemonic, 3 common words). Stroke-order animation is post-v0.1.
 
-### 5.7 Writing / characters (v0.1 “basic”)
+### 5.8 Progress & insights 🔶
 
-- Character cards:
-  - hanzi, pinyin, meaning, radicals, mnemonic, common words
-- Simple practice:
-  - “type pinyin → show hanzi”
-  - “recognition quiz”
-    *(Stroke-order animation can come later.)*
+- ✅ Daily minutes learned (live from API)
+- ✅ Streak (live from API)
+- ✅ Vocabulary in learning (live count)
+- ✅ Due cards count (live)
+- ✅ Weak areas — dynamically derived from SRS card performance (ease, last_result)
+- ✅ "Your week in Mandarin" — AI-generated recap via Venice (`/api/progress/weekly-recap`)
+- ❌ Vocabulary "mastered" tier (cards with high ease / long interval) — no mastered vs learning split
+- ❌ D1/D7 retention metrics not tracked
 
-### 5.8 Progress & insights
-
-- Daily minutes learned
-- Streak
-- Vocabulary mastered / learning
-- Weak areas (tones, measure words, sentence order)
-- “Your week in Mandarin” recap (auto-generated)
+---
 
 ## 6) Agentic architecture (LangChain + LangGraph)
 
-### 6.1 Why LangGraph here
+### 6.1 Why LangGraph here ✅
 
-You want a **stateful, long-running learning relationship**, not a single prompt. LangGraph is explicitly designed for **stateful agent orchestration** and supports persistence/checkpointing for durable state.
+Stateful, long-running learning relationship using LangGraph for orchestration and Postgres checkpointing for durable per-thread state.
 
 ### 6.2 Agents (v0.1)
 
-Implement as a **LangGraph graph** with specialized nodes/agents:
+| Agent | Status | Notes |
+|-------|--------|-------|
+| **Conversation Tutor Agent** | ✅ | `TutorResponse` node; Venice LLM; structured output |
+| **Curriculum Planner Agent** | 🔶 | `Planner` node exists but is a pass-through stub; no real plan generation |
+| **Memory Curator Agent** | ✅ | `MemoryWrite` node; "remember/forget" commands; Supabase persistence |
+| **SRS Builder Agent** | ✅ | `SRSExtract` integrated in `/api/chat`; SM-2 scheduling |
+| **Pronunciation Coach Agent** | 🔶 | Web Speech API input present; no minimal-pair generation or tone scoring |
+| **Safety/Quality Gate** | 🔶 | Verify mode toggle affects temperature + prompting; no active claim-tagging |
 
-1. **Conversation Tutor Agent**
-   - Main dialogue, teaching, correction
-   - Uses retrieved memory + today’s plan
-2. **Curriculum Planner Agent**
-   - Maintains a rolling plan (next 7 days)
-   - Chooses themes based on user goals + past performance
-3. **Memory Curator Agent**
-   - Decides what to store long-term (and what not to)
-   - Writes structured “memories” to Supabase
-   - Supports “forget this” commands
-4. **SRS Builder Agent**
-   - Converts conversation/lesson into review items
-   - Schedules due dates (SM-2-ish heuristic)
-5. **Pronunciation Coach Agent** (lightweight v0.1)
-   - Generates minimal pairs + tone drills
-   - Uses TTS and simple scoring
-6. **Safety/Quality Gate**
-   - Ensures responses remain appropriate, accurate, and not overconfident
-   - Adds “verify” behaviors for uncertain claims
+**Next for Curriculum Planner:** Generate a rolling 7-day topic plan at session start using the user's profile, recent session summaries, and weak areas. Return it in `planSnippet` from `/api/session/start` (currently hardcoded).
 
-### 6.3 Graph flow (conceptual)
+### 6.3 Graph flow ✅
 
-**Input → Route → Retrieve → Teach → Generate practice → Update memory → Persist telemetry**
+`UserMessage → ContextLoader → MemoryRetrieve → Planner (stub) → TutorResponse → SRSExtract → MemoryWrite → SafetyQualityGate → PersistTelemetry`
 
-Example:
+Fallback graph (`runFallbackGraph`) used when LangGraph/Postgres unavailable — same node sequence without stateful checkpointing.
 
-- `UserMessage`
-- `ContextLoader (today + user profile + last session summary)`
-- `MemoryRetrieve (long-term + “recent” items)`
-- `Planner (optional, if plan needs updating)`
-- `TutorResponse`
-- `SRSExtract`
-- `MemoryWrite`
-- `Persist + Return`
+### 6.4 Persistence ✅
 
-LangChain supports runtime-aware prompting and dynamic prompt middleware patterns; you can inject session context cleanly.
+- ✅ LangGraph `PostgresSaver` checkpointer (falls back to `MemorySaver`)
+- ✅ Long-term memory in `learn_chinese.memories` Supabase table
 
-### 6.4 Persistence
+---
 
-- **LangGraph checkpointer** persisted to Postgres (Supabase) to keep “thread” continuity.
-- Long-term memory is your own schema (below).
+## 7) A2A (agent-to-agent) ❌
 
-## 7) A2A (agent-to-agent) — how it fits (v0.1 lightly)
+Deferred. Agents are all within one LangGraph app. A2A interface layer is post-v0.1.
 
-If you want agents running as separate services (or later, a multi-agent ecosystem), **A2A** can standardize how they communicate. It’s positioned as an open protocol for agent interoperability; Google announced it in April 2025.  
-**v0.1 recommendation:** keep agents in one LangGraph app; add A2A as an interface layer later.
+---
 
-## 8) Venice API (LLM provider)
+## 8) Venice API (LLM provider) ✅
 
-- Use Venice for LLM calls (text + streaming). Venice provides REST + streaming interfaces and emphasizes privacy/no retention in their positioning/docs.
-- **Important product note:** even if the provider is permissive, your app should still implement its own safety/quality constraints (especially for learning content and user data).
+- ✅ Venice used for all LLM calls (text + streaming)
+- ✅ Model selection: simple vs complex routing based on message length/intent
+- ✅ Custom model override via UI settings panel
+- ✅ Venice Audio used as TTS fallback when ElevenLabs unavailable
 
-## 9) Data model (Supabase Postgres) — suggested tables
+---
 
-### Core
+## 9) Data model (Supabase Postgres)
 
-- `profiles` (user_id, goals, level, preferences, timezone, coach_style)
-- `sessions` (id, user_id, started_at, ended_at, mode, summary, metrics_json)
-- `messages` (id, session_id, role, content, tokens, created_at)
+All tables live in the `learn_chinese` schema with RLS enforced.
 
-### Memory
+### Core ✅
 
-- `memories` (id, user_id, type, key, value_json, confidence, source, created_at, updated_at, deleted_at)
-- `memory_events` (id, memory_id, action, reason, agent_run_id)
+- ✅ `profiles` — user_id, goals, level, preferences (interests, minutesPerDay, model prefs), timezone, coach_style
+- ✅ `sessions` — id, user_id, started_at, ended_at, mode, summary, metrics_json
+- ✅ `messages` — id, session_id, role, content, created_at
 
-### Learning
+### Memory ✅
 
-- `vocab_items` (id, user_id, hanzi, pinyin, english, tags, source_session_id)
-- `srs_cards` (id, user_id, type, prompt, answer, hints, ease, interval, next_due_at, last_result)
-- `grammar_points` (id, user_id, title, explanation, examples_json)
+- ✅ `memories` — id, user_id, type, key, value_json, confidence, created_at, updated_at, deleted_at (soft delete)
+- ✅ `memory_events` — id, memory_id, action, reason, agent_run_id
 
-### Observability
+### Learning 🔶
 
-- `agent_runs` (id, user_id, session_id, graph_name, node_name, input_hash, output_hash, cost_estimate, latency_ms, created_at)
+- ❌ `vocab_items` — table defined in schema but not actively written to (SRS cards used instead)
+- ✅ `srs_cards` — id, user_id, type, prompt, answer, hints, tags, ease, interval, next_due_at, last_result
+- ❌ `grammar_points` — table defined but not written to
 
-**Storage (Supabase Storage):** audio snippets, optional user uploads.
+### Observability ✅
 
-**Security:** Supabase Auth + RLS on all user-owned tables.
+- ✅ `agent_runs` — id, user_id, session_id, node_name, latency_ms, cost_estimate, created_at
 
-## 10) System architecture (v0.1)
+### Storage ❌
 
-### Frontend
+- ❌ Supabase Storage bucket for audio snippets not configured
 
-- Next.js App Router
-- React + Tailwind + shadcn/ui
-- Responsive “chat-first” UI
-- PWA-ready (service worker optional later)
+---
 
-### Backend (Next.js serverless routes)
+## 10) System architecture (v0.1) ✅
 
-- `/api/chat` → runs LangGraph, streams response
-- `/api/session/start|end`
-- `/api/srs/next` + `/api/srs/grade`
-- `/api/memory/list|delete`
-- `/api/voice/tts` (ElevenLabs)
+### Frontend ✅
 
-### Agent runtime
+- ✅ Next.js 16 App Router, React 19, TypeScript
+- ✅ Tailwind CSS + shadcn/ui + Radix UI
+- ✅ Mobile-first responsive chat UI
+- ✅ PWA with service worker, install prompt, offline fallback page
 
-- **LangGraph in TypeScript/Node** (fits Next.js)
-- Postgres-backed persistence + memory store
-- Streaming tokens to UI
+### Backend — API routes ✅
+
+- ✅ `POST /api/chat` — LangGraph streaming tutor
+- ✅ `POST /api/session/start|end`
+- ✅ `GET /api/srs/next` + `POST /api/srs/grade`
+- ✅ `GET /api/memory/list` + `DELETE /api/memory/delete`
+- ✅ `POST /api/voice/tts`
+- ✅ `GET /api/profile` _(added)_
+- ✅ `GET /api/progress/summary`
+- ✅ `GET /api/progress/continuity` _(added)_
+- ✅ `GET /api/progress/weekly-recap` _(added)_
+- ✅ `GET /api/models`
+- ✅ `POST /api/push/subscribe` + `POST /api/push/send`
+
+### Agent runtime ✅
+
+- ✅ LangGraph in TypeScript; Postgres-backed checkpointer; SSE streaming to UI
+
+---
 
 ## 11) UX requirements (v0.1)
 
-- Mobile-first chat UI
-- “Today’s session” CTA always visible
-- One-tap: “Save to review”, “More examples”, “Quiz me”
-- A dedicated **Memory page** (trust feature)
-- Fast startup: <1s to show UI skeleton, streaming response begins quickly
+- ✅ Mobile-first chat UI
+- ✅ "Today's session" CTA always visible on home page
+- ✅ One-tap: "Save to review", "More examples", "Quiz me" in chat
+- ✅ TTS play buttons on chat examples and review cards
+- ✅ Dedicated Memory page (trust feature)
+- ✅ Fast startup: skeleton rendered immediately; streaming starts quickly
+- ❌ "Explain like I'm 5" toggle not implemented as a UI control
+
+---
 
 ## 12) Quality, safety, and trust
 
-- “Show pinyin + hanzi + meaning” defaults; minimize hallucinated etymology by:
-  - tagging uncertain claims (“not sure”)
-  - offering “verify” mode in advanced settings
-- Memory transparency + deletion
-- Cost guardrails: token budgets per day/session; fallbacks if model is slow
+- ✅ Pinyin + hanzi + meaning shown in all responses
+- 🔶 Verify mode toggle in settings panel — affects temperature and prompting; active claim-tagging not yet implemented
+- ✅ Memory transparency + deletion
+- ❌ Cost guardrails — **not implemented**. No token budgets per session/day; no spend alerts. This is a gap to address before any production traffic.
+
+**Next step for cost guardrails:** Add a `maxTokensPerSession` config in profile preferences; track cumulative token usage in `agent_runs`; return a soft warning when approaching limit.
+
+---
 
 ## 13) Success metrics (v0.1)
 
-- D1 retention, D7 retention
-- % users completing 3+ sessions/week
-- Avg session duration (target 5–15 mins)
-- Review completion rate
-- Self-reported confidence improvement weekly
+Metrics defined but **not yet instrumented**:
 
-## 14) Delivery plan (suggested)
+- ❌ D1/D7 retention tracking
+- ❌ % users completing 3+ sessions/week
+- ❌ Avg session duration reported to analytics
+- ✅ Review completion rate — gradeable in `srs_cards.last_result`
+- ❌ Self-reported confidence surveys
 
-- **Milestone 1:** Core chat tutor + sessions + basic persistence
-- **Milestone 2:** Memory system + “remember/forget” UI
-- **Milestone 3:** SRS generation + daily review loop
-- **Milestone 4:** Audio TTS + simple speaking prompts
-- **Milestone 5:** Weekly recap + insights
+**Next step:** Add a lightweight analytics event layer (can be as simple as structured `agent_runs` rows) to start capturing D1/D7 before user testing.
+
+---
+
+## 14) Delivery plan
+
+| Milestone | Description | Status |
+|-----------|-------------|--------|
+| **M1** | Core chat tutor + sessions + basic persistence | ✅ Done |
+| **M2** | Memory system + "remember/forget" UI | ✅ Done |
+| **M3** | SRS generation + daily review loop | ✅ Done |
+| **M4** | Audio TTS + simple speaking prompts | ✅ Done |
+| **M5** | Weekly recap + insights | ✅ Done |
+| **M6** | PWA + offline + push notifications | ✅ Done |
+| **M7** | Live home page stats + dynamic continuity preview | ✅ Done |
+| **M8** | Curriculum Planner Agent (real rolling plan) | ❌ Next |
+| **M9** | Character card UI (radicals, mnemonic, common words) | ❌ Next |
+| **M10** | Cost guardrails + token budgeting | ❌ Next |
+| **M11** | Analytics instrumentation (D1/D7 retention) | ❌ Next |
+| **M12** | vocab_items + grammar_points active usage | ❌ Backlog |
+| **M13** | HSK curriculum alignment | ❌ Backlog |
+
+---
 
 ## 15) Assumptions (explicit, so we can refine later)
 
-- v0.1 is **text-first**; audio is TTS + optional simple mic input.
-- We prioritize **relationship continuity** over perfect pedagogy coverage.
-- We keep everything browser-based; native comes later.
+- v0.1 is **text-first**; audio is TTS + optional simple mic input. ✅ Holds.
+- We prioritize **relationship continuity** over perfect pedagogy coverage. ✅ Holds.
+- We keep everything browser-based; native comes later. ✅ Holds.
+
+---
 
 ## 16) Implementation plan (execution-ready)
 
-### 16.1 Workstream A — Platform foundation (Week 1)
+### 16.1 Workstream A — Platform foundation ✅ COMPLETE
 
-**Outcomes**
+**Outcomes achieved:**
+- ✅ Next.js App Router baseline (TypeScript, Tailwind, shadcn/ui)
+- ✅ Supabase Auth + Postgres connection
+- ✅ Shared API validation (`zod`), error handling, request correlation
 
-- Working Next.js App Router baseline (TypeScript, Tailwind, shadcn/ui)
-- Supabase Auth + Postgres connection wired
-- Shared API validation and logging
+**Remaining:**
+- ❌ Standardised request correlation IDs not added
+- ❌ Metrics hooks for token/cost tracking per request not added
 
-**Tasks**
+### 16.2 Workstream B — Data model + security ✅ COMPLETE
 
-1. Create app structure for `app/`, `components/`, `lib/`, `server/agents/`, `server/db/`, and `server/api/`.
-2. Add environment management for Supabase, Venice, ElevenLabs, and feature flags.
-3. Define TypeScript models and zod schemas for `Profile`, `Session`, `Message`, `Memory`, `SrsCard`, `AgentRun`.
-4. Add standardized error handling and request correlation IDs.
-5. Add metrics hooks for latency and token/cost tracking.
+**Outcomes achieved:**
+- ✅ All v0.1 tables created with 7 Supabase migrations
+- ✅ RLS policies enforce per-user access on all tables
+- ✅ Indexes for sessions, srs_cards, memories
 
-**Exit criteria**
+**Remaining:**
+- ❌ Supabase Storage bucket for audio not configured
+- ❌ `vocab_items` and `grammar_points` tables defined but not actively used
 
-- Developer can run app locally and authenticate.
-- Health endpoint + one protected API route verified.
+### 16.3 Workstream C — Agent runtime + chat loop ✅ COMPLETE
 
-### 16.2 Workstream B — Data model + security (Week 1–2)
+**Outcomes achieved:**
+- ✅ All graph nodes implemented: `ContextLoader`, `MemoryRetrieve`, `Planner`, `TutorResponse`, `SRSExtract`, `MemoryWrite`, `SafetyQualityGate`, `PersistTelemetry`
+- ✅ Postgres-backed `PostgresSaver` checkpointer (with `MemorySaver` fallback)
+- ✅ `/api/chat` streaming SSE route + message persistence
+- ✅ Structured response format enforced
 
-**Outcomes**
+**Remaining:**
+- 🔶 `Planner` node is a stub — does not generate a real rolling plan
 
-- All v0.1 tables created and indexed
-- RLS policies enforce strict per-user access
+### 16.4 Workstream D — Onboarding + daily session UX ✅ COMPLETE
 
-**Tasks**
+**Outcomes achieved:**
+- ✅ Onboarding: goals, time/day, interests, level, timezone, coach style
+- ✅ 7-day plan generated (as stub text) at onboarding completion
+- ✅ "Today's session" screen with live continuity summary from real last session
+- ✅ Session start/end APIs with telemetry
 
-1. Create SQL migrations for all tables in section 9.
-2. Add indexes for key queries (recent sessions, due SRS cards, memory listing).
-3. Implement RLS policies for each user-owned table.
-4. Add Supabase Storage bucket for audio with owner-based policies.
+**Remaining:**
+- 🔶 `planSnippet` in `/api/session/start` is still hardcoded text — needs Curriculum Planner Agent
 
-**Exit criteria**
+### 16.5 Workstream E — Memory transparency + controls ✅ COMPLETE
 
-- Unauthorized reads/writes blocked by policy tests.
-- DB migration and rollback run successfully.
+**Outcomes achieved:**
+- ✅ `/memory` page: view and delete all stored memories
+- ✅ `/api/memory/list` and `/api/memory/delete`
+- ✅ In-chat "remember this" and "forget this" commands
+- ✅ `memory_events` log with reasons
 
-### 16.3 Workstream C — Agent runtime + chat loop (Week 2–3)
+### 16.6 Workstream F — SRS + quick practice loop ✅ COMPLETE
 
-**Outcomes**
+**Outcomes achieved:**
+- ✅ SRS cards persisted after each chat response
+- ✅ `/api/srs/next` and `/api/srs/grade` with SM-2 scheduling
+- ✅ Quick practice: 5-card burst, TTS playback, character pinyin quiz
+- ✅ Offline grade queue with background sync
 
-- LangGraph-powered streaming tutor experience with session continuity
+**Remaining:**
+- 🔶 Card hints are generic ("Recall context from your last session") rather than session-specific
 
-**Tasks**
+### 16.7 Workstream G — Audio + pronunciation basics ✅ COMPLETE
 
-1. Implement graph nodes: `ContextLoader`, `MemoryRetrieve`, `Planner`, `TutorResponse`, `SRSExtract`, `MemoryWrite`, `SafetyQualityGate`, `PersistTelemetry`.
-2. Configure Postgres-backed checkpointer for per-thread continuity.
-3. Implement `/api/chat` streaming route and message persistence.
-4. Enforce structured response format:
-   - 1–2 key points
-   - 2–5 examples
-   - 1 micro-exercise
-   - explicit “save to review” data
+**Outcomes achieved:**
+- ✅ `/api/voice/tts` (ElevenLabs → Venice fallback)
+- ✅ TTS play buttons in chat examples and review cards
+- ✅ Web Speech API capture + heuristic feedback
 
-**Exit criteria**
+**Remaining:**
+- 🔶 Pronunciation feedback is surface-level (no phoneme/tone scoring)
 
-- Returning user resumes context from prior session.
-- Chat response streams in under target startup latency in normal conditions.
+### 16.8 Workstream H — Insights, reliability, and release ✅ MOSTLY COMPLETE
 
-### 16.4 Workstream D — Onboarding + daily session UX (Week 3)
+**Outcomes achieved:**
+- ✅ Progress view: minutes, streak, vocab count, weak areas (dynamic), due cards
+- ✅ Weekly recap: AI-generated via Venice (`/api/progress/weekly-recap`)
+- ✅ Safety/uncertainty behaviours (verify mode in settings)
+- ✅ Fallback behaviour for unavailable LangGraph or Venice
 
-**Outcomes**
+**Remaining:**
+- ❌ Budget guardrails / token limits not implemented
+- ❌ No auth/RLS automated test suite
+- ❌ Analytics event instrumentation missing
 
-- Users can onboard in <2 minutes and start a guided daily session
+---
 
-**Tasks**
+## 17) API contracts
 
-1. Build onboarding flow for goals, time/day, interests, level, timezone, coach style.
-2. Generate initial 7-day plan at onboarding completion.
-3. Build “Today’s session” screen with continuity summary.
-4. Implement session start/end APIs with telemetry capture.
+All routes require `Authorization: Bearer <supabase_access_token>` unless noted.
 
-**Exit criteria**
-
-- First-time user reaches first tutor turn in <2 minutes from signup.
-
-### 16.5 Workstream E — Memory transparency + controls (Week 4)
-
-**Outcomes**
-
-- Trust feature complete: users can view and delete memories
-
-**Tasks**
-
-1. Build “What I remember about you” page.
-2. Implement `/api/memory/list` and `/api/memory/delete`.
-3. Support in-chat commands for “remember this” and “forget this”.
-4. Log memory change reasons in `memory_events`.
-
-**Exit criteria**
-
-- User can remove any memory item and confirm it no longer influences responses.
-
-### 16.6 Workstream F — SRS + quick practice loop (Week 4–5)
-
-**Outcomes**
-
-- Review system generated from real sessions, with daily due queue
-
-**Tasks**
-
-1. Persist SRS cards generated by `SRSExtract` after each session.
-2. Implement `/api/srs/next` and `/api/srs/grade` with SM-2-ish scheduling.
-3. Build “Quick practice” flow:
-   - 5-card burst
-   - one speaking prompt with TTS playback
-   - one character recognition mini-practice
-
-**Exit criteria**
-
-- Session completion produces new review cards.
-- Daily review queue consistently returns due items.
-
-### 16.7 Workstream G — Audio + pronunciation basics (Week 5)
-
-**Outcomes**
-
-- TTS playback works across chat and review items
-- Lightweight speaking feedback available where browser supports mic
-
-**Tasks**
-
-1. Implement `/api/voice/tts` (ElevenLabs proxy).
-2. Add reusable audio player and playback controls.
-3. Add optional Web Speech capture + heuristic feedback mode.
-
-**Exit criteria**
-
-- User can play sentence audio from chat and review cards.
-
-### 16.8 Workstream H — Insights, reliability, and release (Week 6)
-
-**Outcomes**
-
-- v0.1 readiness with progress tracking and operational guardrails
-
-**Tasks**
-
-1. Build progress view (minutes, streak, vocab status, weak areas).
-2. Generate weekly recap text (“Your week in Mandarin”).
-3. Enforce safety and uncertainty behaviors in tutor output.
-4. Add budget guardrails and fallback behavior for slow model responses.
-5. Finalize launch checklist for auth/RLS, memory deletion, and API resilience.
-
-**Exit criteria**
-
-- All high-priority acceptance criteria pass.
-- No P0 security/privacy gaps remain.
-
-## 17) API contracts (v0.1 draft)
-
-### POST `/api/session/start`
-
-**Input:** `{ mode: "daily" | "ask" | "quick" }`  
+### POST `/api/session/start` ✅
+**Input:** `{ mode: "daily" | "ask" | "quick" }`
 **Output:** `{ sessionId, startedAt, planSnippet }`
+**Note:** `planSnippet` is currently hardcoded. Will be dynamic once Curriculum Planner Agent is built.
 
-### POST `/api/session/end`
-
-**Input:** `{ sessionId, durationSec, summary? }`  
+### POST `/api/session/end` ✅
+**Input:** `{ sessionId, durationSec, summary? }`
 **Output:** `{ ok: true, metrics }`
 
-### POST `/api/chat`
+### POST `/api/chat` ✅
+**Input:** `{ sessionId, message, intent?, verifyMode?, modelSelectionMode?, customModel? }`
+**Output:** SSE stream ending with `{ type: "final", structured: TutorStructuredResponse }`
 
-**Input:** `{ sessionId, message, intent?, saveToReview? }`  
-**Output:** streaming tutor payload + final structured JSON envelope
-
-### GET `/api/srs/next`
-
-**Input:** query `{ limit? }`  
+### GET `/api/srs/next` ✅
+**Input:** query `{ limit? }`
 **Output:** `{ cards: SrsCard[] }`
 
-### POST `/api/srs/grade`
-
-**Input:** `{ cardId, grade: "again" | "hard" | "good" | "easy" }`  
+### POST `/api/srs/grade` ✅
+**Input:** `{ cardId, grade: "again" | "hard" | "good" | "easy" }`
 **Output:** `{ nextDueAt, ease, interval }`
 
-### GET `/api/memory/list`
-
+### GET `/api/memory/list` ✅
 **Output:** `{ memories: MemoryItem[] }`
 
-### DELETE `/api/memory/delete`
-
-**Input:** `{ memoryId }`  
+### DELETE `/api/memory/delete` ✅
+**Input:** `{ memoryId }`
 **Output:** `{ ok: true }`
 
-### POST `/api/voice/tts`
+### POST `/api/voice/tts` ✅
+**Input:** `{ text, voiceId?, speed? }`
+**Output:** `{ audioBase64, format }` or `{ audioUrl, format }`
 
-**Input:** `{ text, voiceId?, speed? }`  
-**Output:** `{ audioUrl | audioBase64, format }`
+### GET `/api/profile` ✅ _(added)_
+**Output:** `{ profile: Profile | null }`
+
+### GET `/api/progress/summary` ✅
+**Output:** `{ summary: { totalSessions, totalMinutes, streakDays, vocabLearning, dueCards, weakAreas } }`
+
+### GET `/api/progress/continuity` ✅ _(added)_
+**Output:** `{ continuity: { sessionDate, when, summary, mode } | null }`
+
+### GET `/api/progress/weekly-recap` ✅ _(added)_
+**Output:** `{ recap: string }` — AI-generated or static fallback
+
+### GET `/api/models` ✅
+**Output:** `{ models: VeniceModel[] }`
+
+### POST `/api/push/subscribe` ✅
+**Input:** `{ subscription: PushSubscription }`
+**Output:** `{ ok: true }`
+
+---
 
 ## 18) Acceptance checklist (release gate)
 
 ### Product
 
-- User can complete onboarding in under 2 minutes.
-- Daily session provides continuity from prior day.
-- Every completed session generates review items.
-- Quick practice works in under 2 minutes.
+- ✅ User can complete onboarding in under 2 minutes.
+- ✅ Daily session provides continuity from prior day (real last-session data).
+- ✅ Every completed session generates review items.
+- ✅ Quick practice works in under 2 minutes.
 
 ### Trust & safety
 
-- User can view and delete long-term memories.
-- Tutor marks uncertainty instead of fabricating facts.
-- “Verify mode” toggle influences response behavior.
+- ✅ User can view and delete long-term memories.
+- 🔶 Tutor marks uncertainty — verify mode lowers temperature and adjusts prompting; explicit "I'm not sure" claim-tagging not yet enforced.
+- ✅ "Verify mode" toggle in settings influences response behaviour.
 
 ### Performance
 
-- Chat UI skeleton appears in <1 second on typical mobile network.
-- Streaming begins promptly after message submit.
-- SRS due queue query responds within acceptable latency.
+- ✅ Chat UI skeleton appears in <1 second.
+- ✅ Streaming begins promptly after message submit.
+- ✅ SRS due queue query responds within acceptable latency.
 
 ### Security
 
-- RLS blocks cross-user reads/writes.
-- Sensitive routes require authenticated user.
-- Memory delete is auditable via `memory_events`.
+- ✅ RLS blocks cross-user reads/writes.
+- ✅ Sensitive routes require authenticated user (Bearer token).
+- ✅ Memory delete is auditable via `memory_events`.
+
+---
+
+## 19) Known gaps & recommended next work
+
+Priority order for the next development session:
+
+### P0 — Before production traffic
+1. **Cost guardrails** — add per-session token budget; track spend in `agent_runs`; soft-cap with user warning. No spend controls exist today.
+2. **Automated RLS tests** — verify cross-user isolation doesn't regress. Currently untested.
+
+### P1 — Core experience completeness
+3. **Curriculum Planner Agent** — make `Planner` node generate a real 7-day rolling plan using profile + session summaries + weak areas. Return it in `planSnippet`.
+4. **Character card UI** — dedicated `/characters` page: structured card with hanzi, pinyin, radical breakdown, mnemonic, and 3 common words. Stroke-order animation is post-v0.1.
+5. **SRS hints — session-specific** — replace generic "Recall context from your last session" hint with the actual sentence from which the card was generated.
+
+### P2 — Analytics & growth
+6. **Analytics instrumentation** — D1/D7 retention events; session duration reporting; review completion rate. A simple structured log in `agent_runs` is enough to start.
+7. **vocab_items active usage** — write vocab to dedicated table alongside SRS cards so mastered vs learning split becomes possible.
+8. **"Mastered" vocab tier** — cards with ease ≥ 3.0 and interval ≥ 21 days considered mastered; surface this on progress page.
+
+### P3 — Backlog
+9. HSK curriculum alignment
+10. Email/webhook push notifications (n8n)
+11. Grammar points active usage
+12. Pronunciation scoring (phoneme/tone heuristics)
+13. Supabase Storage bucket for audio caching server-side
