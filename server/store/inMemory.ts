@@ -58,6 +58,12 @@ export function listSessionsByUser(userId: string) {
   return Array.from(sessions.values()).filter((s) => s.userId === userId);
 }
 
+export function getLastCompletedSession(userId: string) {
+  const userSessions = listSessionsByUser(userId).filter((s) => s.endedAt);
+  userSessions.sort((a, b) => (b.endedAt ?? "").localeCompare(a.endedAt ?? ""));
+  return userSessions[0] ?? null;
+}
+
 export function appendMessage(sessionId: string, role: MessageRecord["role"], content: string) {
   const list = messages.get(sessionId) ?? [];
   const message: MessageRecord = { id: randomUUID(), sessionId, role, content, createdAt: now() };
@@ -162,13 +168,30 @@ export function computeProgressSummary(userId: string) {
       .map((s) => (s.endedAt ?? s.startedAt).slice(0, 10))
   );
 
+  const strugglingCards = cards.filter(
+    (c) => c.ease < 2.0 || c.lastResult === "again" || c.lastResult === "hard"
+  );
+  const weakAreaSet = new Set<string>();
+  for (const card of strugglingCards) {
+    for (const tag of card.tags) {
+      if (tag && tag !== "auto-generated") weakAreaSet.add(tag);
+    }
+    if (/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(card.prompt) && card.lastResult === "again") {
+      weakAreaSet.add("tone pairs");
+    }
+  }
+  const weakAreas = Array.from(weakAreaSet).slice(0, 4);
+  if (weakAreas.length === 0 && cards.length > 0 && strugglingCards.length / cards.length > 0.2) {
+    weakAreas.push("recently introduced vocabulary");
+  }
+
   return {
     totalSessions: userSessions.length,
     totalMinutes,
     streakDays: completedDays.size,
     vocabLearning: cards.length,
     dueCards: due.length,
-    weakAreas: ["measure words", "tone pairs"]
+    weakAreas
   };
 }
 

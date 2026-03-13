@@ -59,6 +59,35 @@ function parseSse(raw: string) {
   return finalEvent?.structured ?? null;
 }
 
+async function playTts(text: string) {
+  try {
+    const response = await fetch("/api/voice/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (!response.ok) return;
+    const data = await response.json() as { audioBase64?: string; audioUrl?: string; format?: string };
+    let url: string;
+    if (data.audioBase64) {
+      const mime = data.format === "mp3" ? "audio/mpeg" : "audio/wav";
+      const blob = new Blob(
+        [Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0))],
+        { type: mime }
+      );
+      url = URL.createObjectURL(blob);
+    } else if (data.audioUrl) {
+      url = data.audioUrl;
+    } else {
+      return;
+    }
+    const audio = new Audio(url);
+    audio.play();
+  } catch {
+    // TTS unavailable — silently skip
+  }
+}
+
 function CoachBubble({ turn }: { turn: ChatTurn }) {
   const [showDetails, setShowDetails] = useState(true);
   const hasDetails = (turn.assistant?.keyPoints?.length ?? 0) > 0
@@ -120,8 +149,16 @@ function CoachBubble({ turn }: { turn: ChatTurn }) {
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Examples</p>
                         <ul className="space-y-1.5">
                           {turn.assistant!.examples.map((ex, i) => (
-                            <li key={i} className="rounded-lg bg-muted px-3 py-2 text-sm font-medium">
-                              {ex}
+                            <li key={i} className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
+                              <span className="flex-1 text-sm font-medium">{ex}</span>
+                              <button
+                                type="button"
+                                onClick={() => playTts(ex)}
+                                className="shrink-0 flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-background transition-colors"
+                                title="Play audio"
+                              >
+                                <Play className="h-3 w-3" />
+                              </button>
                             </li>
                           ))}
                         </ul>

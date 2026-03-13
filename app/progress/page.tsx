@@ -10,7 +10,8 @@ import {
   RefreshCw,
   Loader2,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { Button } from "@/components/ui/button";
@@ -63,20 +64,38 @@ const STAT_CARDS = [
   }
 ];
 
+function nextWeekFocusTags(weakAreas: string[]): string[] {
+  const baseTags = ["SRS review"];
+  if (weakAreas.length > 0) {
+    return [...weakAreas.slice(0, 2).map((a) => a.charAt(0).toUpperCase() + a.slice(1)), ...baseTags];
+  }
+  return ["Conversation practice", "New vocabulary", ...baseTags];
+}
+
 export default function ProgressPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [recap, setRecap] = useState<string | null>(null);
+  const [recapLoading, setRecapLoading] = useState(true);
 
   async function refresh() {
     setIsLoading(true);
+    setRecapLoading(true);
     const response = await authedFetch("/api/progress/summary");
     setIsLoading(false);
     if (!response.ok) {
       setSummary(null);
-      return;
+    } else {
+      const data = await response.json();
+      setSummary(data.summary ?? null);
     }
-    const data = await response.json();
-    setSummary(data.summary ?? null);
+
+    const recapRes = await authedFetch("/api/progress/weekly-recap");
+    setRecapLoading(false);
+    if (recapRes.ok) {
+      const recapData = await recapRes.json();
+      setRecap(recapData.recap ?? null);
+    }
   }
 
   useEffect(() => {
@@ -85,6 +104,7 @@ export default function ProgressPage() {
 
   const dueCards = summary?.dueCards ?? 0;
   const weakAreas = summary?.weakAreas ?? [];
+  const focusTags = nextWeekFocusTags(weakAreas);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -160,14 +180,40 @@ export default function ProgressPage() {
         </Card>
       )}
 
-      {/* Weekly summary */}
+      {/* AI-generated weekly recap */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Your week in Mandarin</CardTitle>
+          </div>
+          <CardDescription>An AI-generated summary of your recent learning activity.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recapLoading ? (
+            <div className="animate-pulse space-y-2">
+              <div className="h-4 w-full rounded bg-muted" />
+              <div className="h-4 w-4/5 rounded bg-muted" />
+              <div className="h-4 w-3/5 rounded bg-muted" />
+            </div>
+          ) : recap ? (
+            <p className="text-sm text-foreground leading-relaxed">{recap}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Complete your first session to unlock your weekly recap.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Weekly summary stats */}
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-base">This week in Mandarin</CardTitle>
+            <CardTitle className="text-base">Weekly targets</CardTitle>
           </div>
-          <CardDescription>A snapshot of your recent learning activity.</CardDescription>
+          <CardDescription>Progress toward your weekly practice goals.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -207,22 +253,24 @@ export default function ProgressPage() {
         </Card>
       )}
 
-      {/* Next week focus */}
+      {/* Next week focus — driven by weak areas */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <BarChart2 className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-base">Next-week focus</CardTitle>
+            <CardTitle className="text-base">Suggested next steps</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-foreground leading-relaxed">
-            Short workplace dialogues + polite requests + review of this week&apos;s weak cards.
+            {weakAreas.length > 0
+              ? `Focus on your weak areas: ${weakAreas.join(", ")}. Keep reviewing due cards daily to reinforce retention.`
+              : "Keep up your daily sessions to build consistency. Review your SRS cards to reinforce what you've learned."}
           </p>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Workplace Mandarin</Badge>
-            <Badge variant="secondary">Polite requests</Badge>
-            <Badge variant="secondary">SRS review</Badge>
+            {focusTags.map((tag) => (
+              <Badge key={tag} variant="secondary">{tag}</Badge>
+            ))}
           </div>
         </CardContent>
       </Card>

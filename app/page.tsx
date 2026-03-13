@@ -6,6 +6,7 @@ import { MessageCircle, BookOpen, ChevronRight, Flame, Clock, Sparkles } from "l
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { authedFetch } from "@/lib/authed-fetch";
 
 const GREETINGS = [
   { zh: "早上好", pinyin: "Zǎoshang hǎo", en: "Good morning" },
@@ -13,9 +14,24 @@ const GREETINGS = [
   { zh: "晚上好", pinyin: "Wǎnshang hǎo", en: "Good evening" }
 ];
 
+type Stats = {
+  streakDays: number;
+  dueCards: number;
+  minutesPerDay: number;
+};
+
+type Continuity = {
+  sessionDate: string;
+  when: string;
+  summary: string | null;
+  mode: string;
+} | null;
+
 export default function HomePage() {
   const [showNudge, setShowNudge] = useState(false);
   const [greetingIdx, setGreetingIdx] = useState(0);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [continuity, setContinuity] = useState<Continuity>(undefined as unknown as Continuity);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -27,7 +43,34 @@ export default function HomePage() {
     else setGreetingIdx(2);
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [summaryRes, profileRes, continuityRes] = await Promise.all([
+          authedFetch("/api/progress/summary"),
+          authedFetch("/api/profile"),
+          authedFetch("/api/progress/continuity")
+        ]);
+
+        const summaryData = summaryRes.ok ? await summaryRes.json() : null;
+        const profileData = profileRes.ok ? await profileRes.json() : null;
+        const continuityData = continuityRes.ok ? await continuityRes.json() : null;
+
+        setStats({
+          streakDays: summaryData?.summary?.streakDays ?? 0,
+          dueCards: summaryData?.summary?.dueCards ?? 0,
+          minutesPerDay: profileData?.profile?.minutesPerDay ?? 10
+        });
+
+        setContinuity(continuityData?.continuity ?? null);
+      } catch {
+        setContinuity(null);
+      }
+    })();
+  }, []);
+
   const greeting = GREETINGS[greetingIdx];
+  const continuityLoaded = continuity !== (undefined as unknown as Continuity);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -65,7 +108,9 @@ export default function HomePage() {
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Guided conversation with your AI Mandarin coach.
                 </p>
-                <Badge variant="secondary" className="text-xs">~15 min</Badge>
+                <Badge variant="secondary" className="text-xs">
+                  ~{stats?.minutesPerDay ?? 10} min
+                </Badge>
               </div>
             </Link>
           </CardContent>
@@ -99,7 +144,9 @@ export default function HomePage() {
             <Flame className="h-5 w-5 text-orange-500 shrink-0" />
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Streak</p>
-              <p className="text-lg font-semibold">—</p>
+              <p className="text-lg font-semibold">
+                {stats ? (stats.streakDays > 0 ? `${stats.streakDays}d` : "0d") : "—"}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -108,7 +155,7 @@ export default function HomePage() {
             <Clock className="h-5 w-5 text-muted-foreground shrink-0" />
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Goal</p>
-              <p className="text-lg font-semibold">10 min</p>
+              <p className="text-lg font-semibold">{stats ? `${stats.minutesPerDay}m` : "—"}</p>
             </div>
           </CardContent>
         </Card>
@@ -117,7 +164,9 @@ export default function HomePage() {
             <BookOpen className="h-5 w-5 text-jade shrink-0" />
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Due</p>
-              <p className="text-lg font-semibold">—</p>
+              <p className="text-lg font-semibold">
+                {stats ? (stats.dueCards > 0 ? String(stats.dueCards) : "0") : "—"}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -152,23 +201,34 @@ export default function HomePage() {
       )}
 
       {/* Continuity preview */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
-            Continuity Preview
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-foreground leading-relaxed">
-            Yesterday you practiced ordering coffee. Today we&apos;ll build on that with polite follow-up questions and expressions of preference.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">Ordering food</Badge>
-            <Badge variant="secondary">Polite speech</Badge>
-            <Badge variant="secondary">Preferences</Badge>
-          </div>
-        </CardContent>
-      </Card>
+      {continuityLoaded && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+              Continuity Preview
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {continuity ? (
+              <>
+                <p className="text-sm text-foreground leading-relaxed">
+                  {continuity.when === "today"
+                    ? "You already had a session today."
+                    : continuity.when === "yesterday"
+                    ? "Yesterday's session is ready to build on."
+                    : `Your last session was on ${continuity.sessionDate}.`}
+                  {continuity.summary ? ` ${continuity.summary}` : " Start a new session to continue your learning journey."}
+                </p>
+                <Badge variant="secondary">{continuity.mode === "quick" ? "Quick practice" : continuity.mode === "ask" ? "Ask mode" : "Daily session"}</Badge>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                No previous sessions yet. Start your first daily session to begin your Mandarin journey!
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
