@@ -15,7 +15,8 @@ import {
   CheckCircle2,
   AlertCircle,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Volume2
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
 import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
@@ -59,36 +60,50 @@ function parseSse(raw: string) {
   return finalEvent?.structured ?? null;
 }
 
-async function playTts(text: string) {
-  try {
-    const response = await fetch("/api/voice/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    });
-    if (!response.ok) return;
-    const data = await response.json() as { audioBase64?: string; audioUrl?: string; format?: string };
-    let url: string;
-    if (data.audioBase64) {
-      const mime = data.format === "mp3" ? "audio/mpeg" : "audio/wav";
-      const blob = new Blob(
-        [Uint8Array.from(atob(data.audioBase64), (c) => c.charCodeAt(0))],
-        { type: mime }
-      );
-      url = URL.createObjectURL(blob);
-    } else if (data.audioUrl) {
-      url = data.audioUrl;
-    } else {
-      return;
-    }
-    const audio = new Audio(url);
-    audio.play();
-  } catch {
-    // TTS unavailable — silently skip
-  }
+function TtsButton({
+  id,
+  text,
+  playTts,
+  ttsLoadingId,
+  className
+}: {
+  id: string;
+  text: string;
+  playTts: (id: string, text: string) => void;
+  ttsLoadingId: string | null;
+  className?: string;
+}) {
+  const isLoading = ttsLoadingId === id;
+  return (
+    <button
+      type="button"
+      onClick={() => playTts(id, text)}
+      disabled={isLoading}
+      className={cn(
+        "shrink-0 flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-background transition-colors disabled:opacity-50",
+        className
+      )}
+      title="Play audio"
+    >
+      {isLoading
+        ? <Loader2 className="h-3 w-3 animate-spin" />
+        : <Volume2 className="h-3 w-3" />
+      }
+    </button>
+  );
 }
 
-function CoachBubble({ turn }: { turn: ChatTurn }) {
+function CoachBubble({
+  turn,
+  turnIndex,
+  playTts,
+  ttsLoadingId
+}: {
+  turn: ChatTurn;
+  turnIndex: number;
+  playTts: (id: string, text: string) => void;
+  ttsLoadingId: string | null;
+}) {
   const [showDetails, setShowDetails] = useState(true);
   const hasDetails = (turn.assistant?.keyPoints?.length ?? 0) > 0
     || (turn.assistant?.examples?.length ?? 0) > 0
@@ -111,9 +126,20 @@ function CoachBubble({ turn }: { turn: ChatTurn }) {
           <>
             {/* Main answer bubble */}
             <div className="rounded-2xl rounded-tl-sm bg-secondary px-4 py-3">
-              <p className="text-sm leading-relaxed text-secondary-foreground">
-                {turn.assistant?.answer ?? "No structured response"}
-              </p>
+              <div className="flex items-start gap-2">
+                <p className="flex-1 text-sm leading-relaxed text-secondary-foreground">
+                  {turn.assistant?.answer ?? "No structured response"}
+                </p>
+                {turn.assistant?.answer && (
+                  <TtsButton
+                    id={`${turnIndex}-answer`}
+                    text={turn.assistant.answer}
+                    playTts={playTts}
+                    ttsLoadingId={ttsLoadingId}
+                    className="mt-0.5"
+                  />
+                )}
+              </div>
             </div>
 
             {/* Expandable details */}
@@ -137,7 +163,13 @@ function CoachBubble({ turn }: { turn: ChatTurn }) {
                           {turn.assistant!.keyPoints.map((pt, i) => (
                             <li key={i} className="flex items-start gap-2 text-sm">
                               <span className="text-jade mt-0.5">·</span>
-                              <span>{pt}</span>
+                              <span className="flex-1">{pt}</span>
+                              <TtsButton
+                                id={`${turnIndex}-kp-${i}`}
+                                text={pt}
+                                playTts={playTts}
+                                ttsLoadingId={ttsLoadingId}
+                              />
                             </li>
                           ))}
                         </ul>
@@ -151,14 +183,12 @@ function CoachBubble({ turn }: { turn: ChatTurn }) {
                           {turn.assistant!.examples.map((ex, i) => (
                             <li key={i} className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
                               <span className="flex-1 text-sm font-medium">{ex}</span>
-                              <button
-                                type="button"
-                                onClick={() => playTts(ex)}
-                                className="shrink-0 flex items-center justify-center h-6 w-6 rounded-full text-muted-foreground hover:text-foreground hover:bg-background transition-colors"
-                                title="Play audio"
-                              >
-                                <Play className="h-3 w-3" />
-                              </button>
+                              <TtsButton
+                                id={`${turnIndex}-ex-${i}`}
+                                text={ex}
+                                playTts={playTts}
+                                ttsLoadingId={ttsLoadingId}
+                              />
                             </li>
                           ))}
                         </ul>
@@ -168,8 +198,14 @@ function CoachBubble({ turn }: { turn: ChatTurn }) {
                     {turn.assistant?.microExercise && (
                       <div className="space-y-1.5">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Quick exercise</p>
-                        <div className="rounded-lg border border-jade/20 bg-jade/5 px-3 py-2 text-sm text-foreground">
-                          {turn.assistant.microExercise}
+                        <div className="flex items-start gap-2 rounded-lg border border-jade/20 bg-jade/5 px-3 py-2">
+                          <span className="flex-1 text-sm text-foreground">{turn.assistant.microExercise}</span>
+                          <TtsButton
+                            id={`${turnIndex}-exercise`}
+                            text={turn.assistant.microExercise}
+                            playTts={playTts}
+                            ttsLoadingId={ttsLoadingId}
+                          />
                         </div>
                       </div>
                     )}
@@ -186,6 +222,7 @@ function CoachBubble({ turn }: { turn: ChatTurn }) {
 
 export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string>("");
+  const [planSnippet, setPlanSnippet] = useState<string>("");
   const [input, setInput] = useState("Teach me how to order tea politely.");
   const [verifyMode, setVerifyMode] = useState(false);
   const [modelSelectionMode, setModelSelectionMode] = useState<"auto" | "simple" | "complex" | "custom">("auto");
@@ -196,13 +233,49 @@ export default function ChatPage() {
   const [sessionStatus, setSessionStatus] = useState<"idle" | "active" | "ended">("idle");
   const [statusMsg, setStatusMsg] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [ttsLoadingId, setTtsLoadingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const canSend = useMemo(
     () => !!sessionId && input.trim().length > 0 && !isLoading,
     [input, sessionId, isLoading]
   );
+
+  function extractChinese(text: string): string | null {
+    const matches = text.match(/[\u4e00-\u9fff\u3400-\u4dbf]+/g);
+    return matches ? matches.join("") : null;
+  }
+
+  async function playTts(id: string, text: string) {
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current = null;
+    }
+    setTtsLoadingId(id);
+    const chineseOnly = extractChinese(text);
+    const payload = chineseOnly
+      ? { text: chineseOnly, speed: 0.85, lang: "zh" }
+      : { text, speed: 1.0 };
+    try {
+      const response = await fetch("/api/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) return;
+      const data = await response.json() as { audioBase64?: string; format?: string };
+      if (!data.audioBase64) return;
+      const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+      ttsAudioRef.current = audio;
+      await audio.play();
+    } catch {
+      // TTS unavailable — silently skip
+    } finally {
+      setTtsLoadingId(null);
+    }
+  }
 
   // Auto-scroll to bottom when turns update
   useEffect(() => {
@@ -239,6 +312,7 @@ export default function ChatPage() {
     }
     const data = await response.json();
     setSessionId(data.sessionId);
+    setPlanSnippet(data.planSnippet ?? "");
     setSessionStatus("active");
     setStatusMsg("");
     inputRef.current?.focus();
@@ -259,6 +333,7 @@ export default function ChatPage() {
     localStorage.setItem("lastSessionDate", new Date().toISOString().slice(0, 10));
     setSessionStatus("ended");
     setSessionId("");
+    setPlanSnippet("");
     setStatusMsg("Session complete. Great work today! 🎉");
   }
 
@@ -278,7 +353,8 @@ export default function ChatPage() {
       intent,
       saveToReview,
       modelSelectionMode,
-      customModel: modelSelectionMode === "custom" ? customModel : undefined
+      customModel: modelSelectionMode === "custom" ? customModel : undefined,
+      planSnippet: planSnippet || undefined
     };
     const response = await authedFetch("/api/chat", {
       method: "POST",
@@ -376,6 +452,14 @@ export default function ChatPage() {
         </div>
       </div>
 
+      {/* Today's plan banner */}
+      {sessionStatus === "active" && planSnippet && (
+        <div className="px-4 lg:px-8 py-2 border-b bg-secondary/20 flex items-center gap-2">
+          <BookOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <p className="text-xs text-muted-foreground">{planSnippet}</p>
+        </div>
+      )}
+
       {/* Settings panel */}
       {showSettings && (
         <div className="px-4 lg:px-8 py-3 border-b bg-secondary/30 flex flex-wrap items-center gap-3 animate-fade-in">
@@ -458,7 +542,12 @@ export default function ChatPage() {
                 </div>
 
                 {/* Coach response */}
-                <CoachBubble turn={turn} />
+                <CoachBubble
+                  turn={turn}
+                  turnIndex={index}
+                  playTts={playTts}
+                  ttsLoadingId={ttsLoadingId}
+                />
               </div>
             ))
           )}

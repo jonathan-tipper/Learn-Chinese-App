@@ -85,23 +85,33 @@ function buildPrompt(input: {
   profileSummary: string;
   recentUserMessages: string[];
   verifyMode?: boolean;
+  planSnippet?: string;
 }) {
   const memories = input.memoryContext.length ? input.memoryContext.join("\n") : "(none)";
   const recentMessages = input.recentUserMessages.length ? input.recentUserMessages.join("\n") : "(none)";
 
-  return [
+  const lines = [
     `User message: ${input.message}`,
     `Profile summary: ${input.profileSummary}`,
     `Long-term memories:\n${memories}`,
     `Recent user messages:\n${recentMessages}`,
-    `Verify mode: ${input.verifyMode ? "enabled" : "disabled"}`,
+    `Verify mode: ${input.verifyMode ? "enabled" : "disabled"}`
+  ];
+
+  if (input.planSnippet) {
+    lines.push(`Today's session focus: ${input.planSnippet}`);
+  }
+
+  lines.push(
     "Teach Mandarin in-context. Include concise hanzi + pinyin + English where useful.",
     "Output JSON only with keys: answer, keyPoints, examples, microExercise, suggestedReviewItems.",
     "Constraints: keyPoints max 4 items, examples max 6 items, suggestedReviewItems max 10 items.",
     "IMPORTANT: Each suggestedReviewItem MUST use this exact format: 'hanzi (pinyin) - English meaning'.",
     "Examples of correct suggestedReviewItems: '请 (qǐng) - please', '谢谢 (xiè xiè) - thank you', '咖啡 (kā fēi) - coffee'.",
     "Only include individual vocabulary words or short phrases in suggestedReviewItems — NOT full sentences, NOT grammar concepts, NOT English-only text."
-  ].join("\n\n");
+  );
+
+  return lines.join("\n\n");
 }
 
 async function queryVenice(input: {
@@ -114,6 +124,7 @@ async function queryVenice(input: {
   modelSelectionMode?: ModelSelectionMode;
   customModel?: string;
   modelPreferences?: VeniceModelPreferences;
+  planSnippet?: string;
 }): Promise<TutorStructuredResponse> {
   if (!isVeniceEnabled()) {
     throw new Error("Venice API key is required for tutor reasoning.");
@@ -180,6 +191,7 @@ export async function generateTutorStructuredResponse(input: {
   modelSelectionMode?: ModelSelectionMode;
   customModel?: string;
   modelPreferences?: VeniceModelPreferences;
+  planSnippet?: string;
 }): Promise<TutorStructuredResponse> {
   return queryVenice(input);
 }

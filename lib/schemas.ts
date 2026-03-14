@@ -18,7 +18,8 @@ export const chatSchema = z.object({
   saveToReview: z.boolean().optional(),
   verifyMode: z.boolean().optional(),
   modelSelectionMode: z.enum(["auto", "simple", "complex", "custom"]).default("auto"),
-  customModel: z.string().optional()
+  customModel: z.string().optional(),
+  planSnippet: z.string().optional()
 });
 
 export const srsGradeSchema = z.object({
@@ -33,7 +34,8 @@ export const memoryDeleteSchema = z.object({
 export const ttsSchema = z.object({
   text: z.string().min(1),
   voiceId: z.string().optional(),
-  speed: z.number().min(0.5).max(2).optional()
+  speed: z.number().min(0.5).max(2).optional(),
+  lang: z.enum(["zh", "en"]).optional()
 });
 
 export const onboardingSchema = z.object({

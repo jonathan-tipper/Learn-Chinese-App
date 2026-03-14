@@ -14,6 +14,7 @@ export interface LangGraphInput {
   verifyMode?: boolean;
   modelSelectionMode?: ModelSelectionMode;
   customModel?: string;
+  planSnippet?: string;
 }
 
 export interface LangGraphOutput {
@@ -30,6 +31,7 @@ const TutorState = Annotation.Root({
   verifyMode: Annotation<boolean | undefined>(),
   modelSelectionMode: Annotation<ModelSelectionMode | undefined>(),
   customModel: Annotation<string | undefined>(),
+  planSnippet: Annotation<string | undefined>(),
   profileSummary: Annotation<string>(),
   preferredSimpleModel: Annotation<string | undefined>(),
   preferredComplexModel: Annotation<string | undefined>(),
@@ -97,6 +99,7 @@ async function compileTutorGraph() {
         verifyMode: state.verifyMode,
         modelSelectionMode: state.modelSelectionMode,
         customModel: state.customModel,
+        planSnippet: state.planSnippet,
         modelPreferences: {
           preferredSimpleModel: state.preferredSimpleModel,
           preferredComplexModel: state.preferredComplexModel
@@ -148,6 +151,7 @@ export async function runTutorGraphWithLangGraph(input: LangGraphInput): Promise
       verifyMode: input.verifyMode,
       modelSelectionMode: input.modelSelectionMode,
       customModel: input.customModel,
+      planSnippet: input.planSnippet,
       nodesExecuted: []
     },
     {

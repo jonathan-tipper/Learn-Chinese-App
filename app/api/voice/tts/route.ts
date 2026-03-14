@@ -8,6 +8,35 @@ export async function POST(request: Request) {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     const voiceId = body.voiceId ?? process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL";
 
+    // Chinese text must use a Chinese-capable voice — route directly to Venice regardless of ElevenLabs config
+    if (body.lang === "zh") {
+      if (!isVeniceEnabled()) {
+        throw new Error("Chinese TTS requires Venice API. Set VENICE_API_KEY.");
+      }
+      const veniceVoice = env.veniceTtsVoice;
+      const veniceResponse = await fetch(`${env.veniceBaseUrl}/audio/speech`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+          Authorization: `Bearer ${env.veniceApiKey}`
+        },
+        body: JSON.stringify({
+          model: env.veniceTtsModel,
+          input: body.text,
+          voice: veniceVoice,
+          speed: body.speed ?? 1,
+          response_format: "mp3",
+          streaming: false
+        })
+      });
+      if (!veniceResponse.ok) {
+        throw new Error(`Venice Chinese TTS failed (${veniceResponse.status})`);
+      }
+      const audio = Buffer.from(await veniceResponse.arrayBuffer()).toString("base64");
+      return ok({ provider: "venice", format: "audio/mpeg;base64", voiceId: veniceVoice, audioBase64: audio });
+    }
+
     if (apiKey) {
       const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: "POST",

@@ -110,7 +110,8 @@ export async function POST(request: Request) {
       intent: body.intent,
       verifyMode: body.verifyMode,
       modelSelectionMode: body.modelSelectionMode,
-      customModel: body.customModel
+      customModel: body.customModel,
+      planSnippet: body.planSnippet
     });
 
     let answer = formatIntent(graph.structured.answer, body.intent);

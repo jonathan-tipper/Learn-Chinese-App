@@ -12,6 +12,7 @@ export interface GraphInput {
   verifyMode?: boolean;
   modelSelectionMode?: ModelSelectionMode;
   customModel?: string;
+  planSnippet?: string;
 }
 
 export interface GraphOutput {
@@ -51,6 +52,7 @@ async function runFallbackGraph(input: GraphInput): Promise<GraphOutput> {
     verifyMode: input.verifyMode,
     modelSelectionMode: input.modelSelectionMode,
     customModel: input.customModel,
+    planSnippet: input.planSnippet,
     modelPreferences: profile
       ? {
         preferredSimpleModel: profile.preferredSimpleModel,
