@@ -24,6 +24,10 @@ export async function createSession(userId: string, mode: SessionRecord["mode"])
   return shouldUseSupabaseStore() ? supabase.createSession(userId, mode) : inMemory.createSession(userId, mode);
 }
 
+export async function getSessionForUser(userId: string, sessionId: string) {
+  return shouldUseSupabaseStore() ? supabase.getSessionForUser(userId, sessionId) : inMemory.getSessionForUser(userId, sessionId);
+}
+
 export async function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
   return shouldUseSupabaseStore()
     ? supabase.endSession(sessionId, durationSec, summary, userId)
@@ -44,6 +48,12 @@ export async function appendMessage(sessionId: string, role: MessageRecord["role
 
 export async function listSessionMessages(sessionId: string) {
   return shouldUseSupabaseStore() ? supabase.listSessionMessages(sessionId) : inMemory.listSessionMessages(sessionId);
+}
+
+export async function listSessionMessagesForUser(userId: string, sessionId: string) {
+  return shouldUseSupabaseStore()
+    ? supabase.listSessionMessagesForUser(userId, sessionId)
+    : inMemory.listSessionMessagesForUser(userId, sessionId);
 }
 
 export async function listMemories(userId: string) {

@@ -64,7 +64,7 @@ export default function OnboardingPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch("/api/models");
+        const response = await authedFetch("/api/models");
         if (!response.ok) return;
         const data = await response.json();
         if (Array.isArray(data.models) && data.models.length > 0) {
@@ -96,21 +96,25 @@ export default function OnboardingPage() {
       preferredComplexModel: form.preferredComplexModel
     };
 
-    const response = await authedFetch("/api/onboarding/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json();
+    try {
+      const response = await authedFetch("/api/onboarding/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
 
-    setIsSubmitting(false);
+      if (!response.ok) {
+        setError(data.error ?? "Unable to save onboarding");
+        return;
+      }
 
-    if (!response.ok) {
-      setError(data.error ?? "Unable to save onboarding");
-      return;
+      setResult({ profile: data.profile, firstWeekPlan: data.firstWeekPlan });
+    } catch {
+      setError("Could not save onboarding. Check your connection and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setResult({ profile: data.profile, firstWeekPlan: data.firstWeekPlan });
   }
 
   if (result) {
@@ -155,6 +159,7 @@ export default function OnboardingPage() {
   }
 
   const progressPct = ((step + 1) / STEPS.length) * 100;
+  const canContinueProfile = form.goals.trim().length > 0 && form.timezone.trim().length > 0;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-xl mx-auto">
@@ -377,7 +382,12 @@ export default function OnboardingPage() {
             </Button>
           )}
           {step < STEPS.length - 1 ? (
-            <Button type="button" onClick={() => setStep((s) => s + 1)} className="flex-1">
+            <Button
+              type="button"
+              onClick={() => setStep((s) => s + 1)}
+              className="flex-1"
+              disabled={step === 0 && !canContinueProfile}
+            >
               Continue
               <ChevronRight className="h-4 w-4" />
             </Button>

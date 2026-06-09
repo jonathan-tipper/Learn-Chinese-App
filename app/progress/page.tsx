@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils";
 type Summary = {
   totalSessions: number;
   totalMinutes: number;
+  weeklySessions: number;
+  weeklyMinutes: number;
   streakDays: number;
   vocabLearning: number;
   dueCards: number;
@@ -137,7 +139,7 @@ export default function ProgressPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {STAT_CARDS.map(({ key, label: _label, icon: Icon, format, desc, color }) => (
+          {STAT_CARDS.map(({ key, icon: Icon, format, desc, color }) => (
             <Card key={key}>
               <CardContent className="p-5 space-y-2">
                 <Icon className={cn("h-4 w-4", color)} />
@@ -219,16 +221,16 @@ export default function ProgressPage() {
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Sessions completed</span>
-              <span className="font-medium">{summary?.totalSessions ?? 0} / 7</span>
+              <span className="font-medium">{summary?.weeklySessions ?? 0} / 7</span>
             </div>
-            <Progress value={Math.min((summary?.totalSessions ?? 0) / 7 * 100, 100)} className="h-1.5" />
+            <Progress value={Math.min((summary?.weeklySessions ?? 0) / 7 * 100, 100)} className="h-1.5" />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Minutes practiced</span>
-              <span className="font-medium">{summary?.totalMinutes ?? 0} / 70 min</span>
+              <span className="font-medium">{summary?.weeklyMinutes ?? 0} / 70 min</span>
             </div>
-            <Progress value={Math.min((summary?.totalMinutes ?? 0) / 70 * 100, 100)} className="h-1.5" />
+            <Progress value={Math.min((summary?.weeklyMinutes ?? 0) / 70 * 100, 100)} className="h-1.5" />
           </div>
         </CardContent>
       </Card>

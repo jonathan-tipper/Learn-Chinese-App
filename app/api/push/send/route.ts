@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     // Fetch all subscriptions for this user
     const db = getSupabaseServiceClient();
     const { data: subs, error } = await db
-      .schema("learn_chinese")
+      .schema(env.supabaseDbSchema)
       .from("push_subscriptions")
       .select("endpoint, p256dh, auth")
       .eq("user_id", payload.userId);
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     // Prune stale subscriptions
     if (staleEndpoints.length > 0) {
       await db
-        .schema("learn_chinese")
+        .schema(env.supabaseDbSchema)
         .from("push_subscriptions")
         .delete()
         .eq("user_id", payload.userId)

@@ -11,7 +11,13 @@ import type {
 import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
-import { computeScheduling, parseReviewItem } from "@/server/store/srs";
+import {
+  computeScheduling,
+  formatReviewAnswer,
+  isValidReviewItem,
+  parseReviewItem,
+  srsCardIdentity
+} from "@/server/store/srs";
 
 const nowIso = () => new Date().toISOString();
 const from = (client: ReturnType<typeof getSupabaseServiceClient>, name: string) =>
@@ -203,6 +209,20 @@ export async function createSession(userId: string, mode: SessionRecord["mode"])
   return { id, userId, mode, startedAt } satisfies SessionRecord;
 }
 
+export async function getSessionForUser(userId: string, sessionId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, user_id, mode, started_at, ended_at, summary, metrics_json")
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle<SessionRow>();
+
+  if (error) throw error;
+  return data ? mapSession(data) : null;
+}
+
 export async function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
   const client = getSupabaseServiceClient();
   const endedAt = nowIso();
@@ -287,6 +307,12 @@ export async function listSessionMessages(sessionId: string) {
   }));
 }
 
+export async function listSessionMessagesForUser(userId: string, sessionId: string) {
+  const session = await getSessionForUser(userId, sessionId);
+  if (!session) return [];
+  return listSessionMessages(sessionId);
+}
+
 export async function listMemories(userId: string) {
   const client = getSupabaseServiceClient();
   const { data, error } = await client
@@ -350,12 +376,20 @@ export async function addSrsCards(userId: string, items: string[]) {
 
   const client = getSupabaseServiceClient();
   const now = nowIso();
-  const rows = items.map((item) => {
+  const existing = await getAllCards(userId);
+  const seen = new Set(existing.map((card) => srsCardIdentity(card.prompt, card.answer)));
+  const rows = [];
+
+  for (const item of items) {
     const parsed = parseReviewItem(item);
-    const answer = parsed.english
-      ? (parsed.pinyin ? `${parsed.pinyin} — ${parsed.english}` : parsed.english)
-      : item;
-    return {
+    if (!isValidReviewItem(parsed)) continue;
+
+    const answer = formatReviewAnswer(parsed);
+    const identity = srsCardIdentity(parsed.chinese, answer);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+
+    rows.push({
       id: randomUUID(),
       user_id: userId,
       type: "vocab",
@@ -367,8 +401,10 @@ export async function addSrsCards(userId: string, items: string[]) {
       interval: 1,
       next_due_at: now,
       updated_at: now
-    };
-  });
+    });
+  }
+
+  if (!rows.length) return [];
 
   const { data, error } = await client
     .schema(env.supabaseDbSchema)
@@ -484,11 +520,23 @@ export async function computeProgressSummary(userId: string) {
   const dueCards = cards.filter((card) => new Date(card.nextDueAt).getTime() <= Date.now());
 
   const totalMinutes = sessions.reduce((acc, session) => acc + Math.round((session.durationSec ?? 0) / 60), 0);
-  const streakDays = new Set(
+  const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weeklySessions = sessions.filter((session) => {
+    const completedAt = session.endedAt ?? session.startedAt;
+    return Boolean(session.endedAt) && new Date(completedAt).getTime() > weekStartMs;
+  });
+  const weeklyMinutes = weeklySessions.reduce((acc, session) => acc + Math.round((session.durationSec ?? 0) / 60), 0);
+  const completedDays = new Set(
     sessions
       .filter((session) => session.endedAt)
       .map((session) => (session.endedAt ?? session.startedAt).slice(0, 10))
-  ).size;
+  );
+  let streakDays = 0;
+  const cursor = new Date(new Date().toISOString().slice(0, 10));
+  while (completedDays.has(cursor.toISOString().slice(0, 10))) {
+    streakDays++;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
 
   // Derive weak areas from cards that are struggling (ease < 2.0 or lastResult is "again"/"hard")
   const strugglingCards = cards.filter(
@@ -513,6 +561,8 @@ export async function computeProgressSummary(userId: string) {
   return {
     totalSessions: sessions.length,
     totalMinutes,
+    weeklySessions: weeklySessions.length,
+    weeklyMinutes,
     streakDays,
     vocabLearning: cards.length,
     dueCards: dueCards.length,

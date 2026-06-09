@@ -57,7 +57,7 @@ function MemoryCard({ memory, onForget }: { memory: Memory; onForget: (id: strin
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive hover:bg-destructive/10 transition-all"
+                className="h-7 w-7 shrink-0 text-muted-foreground opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 hover:text-destructive hover:bg-destructive/10 transition-all"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -107,12 +107,17 @@ export default function MemoryPage() {
   }
 
   async function remove(memoryId: string) {
+    const previous = memories;
     setMemories((prev) => prev.filter((m) => m.id !== memoryId));
-    await authedFetch("/api/memory/delete", {
+    const response = await authedFetch("/api/memory/delete", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ memoryId })
     });
+    if (!response.ok) {
+      setMemories(previous);
+      return;
+    }
     refresh();
   }
 
