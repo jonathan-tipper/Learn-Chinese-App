@@ -23,7 +23,6 @@ function openDb(): Promise<IDBDatabase> {
 export interface QueuedGrade {
   cardId: string;
   grade:  string;
-  token:  string;
 }
 
 /** Add one grade to the persistent queue and register a Background Sync tag. */
@@ -36,17 +35,8 @@ export async function enqueueGrade(entry: QueuedGrade): Promise<void> {
     tx.onerror    = () => reject(tx.error);
   });
 
-  // Register Background Sync so the SW can drain the queue even if the tab closes.
-  // SyncManager is not in the standard TS lib, so we cast to access it safely.
-  if ("serviceWorker" in navigator && "SyncManager" in window) {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const syncManager = (reg as unknown as { sync?: { register(tag: string): Promise<void> } }).sync;
-      await syncManager?.register("srs-grade-sync");
-    } catch {
-      // Background Sync not available (e.g. Firefox) — online handler will drain
-    }
-  }
+  // Do not store bearer tokens in IndexedDB. The foreground online handler drains
+  // this queue with the user's current Supabase session.
 }
 
 /** Return all queued grades without removing them. */
@@ -91,7 +81,7 @@ export async function getPendingCount(): Promise<number> {
  * Called from the main thread when the browser comes back online.
  * The SW's Background Sync handler calls its own copy of this logic.
  */
-export async function drainQueue(): Promise<number> {
+export async function drainQueue(token: string): Promise<number> {
   const items = await readAll();
   let sent = 0;
 
@@ -101,7 +91,7 @@ export async function drainQueue(): Promise<number> {
         method:  "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization:  `Bearer ${value.token}`,
+          Authorization:  `Bearer ${token}`,
         },
         body: JSON.stringify({ cardId: value.cardId, grade: value.grade }),
       });

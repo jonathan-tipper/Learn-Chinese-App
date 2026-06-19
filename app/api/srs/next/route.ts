@@ -6,8 +6,9 @@ export async function GET(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const { searchParams } = new URL(request.url);
-    const limit = Number(searchParams.get("limit") ?? 10);
-    const cards = await getDueCards(userId, Number.isNaN(limit) ? 10 : limit);
+    const rawLimit = Number(searchParams.get("limit") ?? 10);
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 50) : 10;
+    const cards = await getDueCards(userId, limit);
     return ok({ cards });
   } catch (error) {
     return errorResponse(error);

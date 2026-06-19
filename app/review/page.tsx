@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CheckCircle2,
@@ -58,7 +58,7 @@ const LEGACY_PREFIX_RE = /^Translate or use:\s*/i;
 
 /** Strip legacy prefix and embedded English/pinyin, leaving only the Chinese/hanzi for the prompt. */
 function cleanPromptForDisplay(prompt: string): string {
-  let cleaned = prompt.replace(LEGACY_PREFIX_RE, "");
+  const cleaned = prompt.replace(LEGACY_PREFIX_RE, "");
   // "请 (qǐng) - please" → "请"
   const dashMatch = cleaned.match(/^(.+?)\s*(?:\([^)]+\))?\s*[-—–]\s*.+$/);
   if (dashMatch && CJK_RE.test(dashMatch[1])) {
@@ -126,7 +126,7 @@ export default function ReviewPage() {
     }
     setTtsLoadingId(cardId);
     try {
-      const response = await fetch("/api/voice/tts", {
+      const response = await authedFetch("/api/voice/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, speed: 0.85 })
@@ -153,7 +153,11 @@ export default function ReviewPage() {
   // Drain any queued grades the moment the browser comes back online
   useEffect(() => {
     async function handleOnline() {
-      const sent = await drainQueue();
+      const supabase = getSupabaseBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const sent = await drainQueue(session.access_token);
       if (sent > 0) {
         setStatus({ type: "success", message: `Synced ${sent} offline grade${sent > 1 ? "s" : ""}.` });
       }
@@ -187,10 +191,20 @@ export default function ReviewPage() {
     });
   }
 
-  async function grade(cardId: string, gradeValue: Grade) {
+  const grade = useCallback(async (cardId: string, gradeValue: Grade) => {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+    const currentCard = card;
+
     // Optimistically remove the card and bump the counter regardless of outcome
     setCompletedCount((c) => c + 1);
     setCards((prev) => prev.filter((c) => c.id !== cardId));
+
+    function restoreCard(message: string) {
+      setCompletedCount((c) => Math.max(0, c - 1));
+      setCards((prev) => prev.some((c) => c.id === cardId) ? prev : [currentCard, ...prev]);
+      setStatus({ type: "error", message });
+    }
 
     try {
       const response = await authedFetch("/api/srs/grade", {
@@ -200,7 +214,7 @@ export default function ReviewPage() {
       });
 
       if (!response.ok) {
-        setStatus({ type: "error", message: "Please sign in to grade cards." });
+        restoreCard("Could not grade this card. Please sign in and try again.");
         return;
       }
 
@@ -212,11 +226,36 @@ export default function ReviewPage() {
       const supabase = getSupabaseBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.access_token) {
-        await enqueueGrade({ cardId, grade: gradeValue, token: session.access_token });
+        await enqueueGrade({ cardId, grade: gradeValue });
+        setStatus({ type: "idle", message: "You're offline — grade saved and will sync when this device is online." });
+        return;
       }
-      setStatus({ type: "idle", message: "You're offline — grade saved and will sync automatically." });
+
+      restoreCard("You're offline. Sign in before grading so this review can sync.");
     }
-  }
+  }, [cards]);
+
+  useEffect(() => {
+    function handleGradeShortcut(event: KeyboardEvent) {
+      const firstCard = cards[0];
+      if (!firstCard || !revealedCards.has(firstCard.id)) return;
+
+      const shortcutToGrade: Record<string, Grade> = {
+        "1": "again",
+        "2": "hard",
+        "3": "good",
+        "4": "easy"
+      };
+      const nextGrade = shortcutToGrade[event.key];
+      if (!nextGrade) return;
+
+      event.preventDefault();
+      void grade(firstCard.id, nextGrade);
+    }
+
+    window.addEventListener("keydown", handleGradeShortcut);
+    return () => window.removeEventListener("keydown", handleGradeShortcut);
+  }, [cards, grade, revealedCards]);
 
   function toggleReveal(cardId: string) {
     setRevealedCards((prev) => {

@@ -1,9 +1,11 @@
+import { getUserIdFromRequest } from "@/lib/auth";
 import { env, isVeniceEnabled } from "@/lib/env";
-import { badRequest, ok, parseBody } from "@/lib/http";
+import { errorResponse, ok, parseBody } from "@/lib/http";
 import { ttsSchema } from "@/lib/schemas";
 
 export async function POST(request: Request) {
   try {
+    await getUserIdFromRequest(request);
     const body = await parseBody(request, ttsSchema);
     const apiKey = process.env.ELEVENLABS_API_KEY;
     const voiceId = body.voiceId ?? process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL";
@@ -103,6 +105,6 @@ export async function POST(request: Request) {
       audioBase64: veniceAudio
     });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }

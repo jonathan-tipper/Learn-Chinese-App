@@ -47,19 +47,9 @@ const withPWA = withPWAInit({
           expiration: { maxAgeSeconds: 24 * 60 * 60 },
         },
       },
-      // ── SRS API — network first; background-sync handles offline queuing ─
-      {
-        urlPattern: /\/api\/srs\//,
-        handler: "NetworkFirst",
-        options: {
-          cacheName: "srs-api",
-          networkTimeoutSeconds: 10,
-          expiration: { maxAgeSeconds: 60 * 60 },
-        },
-      },
       // ── AI chat & session routes — always require live connection ─────────
       {
-        urlPattern: /\/api\/(chat|session)/,
+        urlPattern: /\/api\//,
         handler: "NetworkOnly",
       },
     ],
@@ -67,6 +57,17 @@ const withPWA = withPWAInit({
 });
 
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+    ];
+  },
+};
 
 export default withPWA(nextConfig);

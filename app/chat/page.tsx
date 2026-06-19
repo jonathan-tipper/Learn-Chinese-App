@@ -23,9 +23,7 @@ import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +56,59 @@ function parseSse(raw: string) {
 
   const finalEvent = parsed.find((event: { type?: string }) => event.type === "final");
   return finalEvent?.structured ?? null;
+}
+
+function emptyStructured(answer = ""): Structured {
+  return {
+    answer,
+    keyPoints: [],
+    examples: [],
+    microExercise: "",
+    suggestedReviewItems: []
+  };
+}
+
+async function readSseResponse(
+  response: Response,
+  onDelta: (content: string) => void
+): Promise<Structured | null> {
+  if (!response.body) {
+    return parseSse(await response.text());
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalStructured: Structured | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+
+    for (const rawEvent of events) {
+      const eventText = rawEvent.trim().replace(/^data:\s*/, "");
+      if (!eventText) continue;
+
+      try {
+        const event = JSON.parse(eventText) as { type?: string; content?: string; structured?: Structured };
+        if (event.type === "delta" && event.content) {
+          onDelta(event.content);
+        }
+        if (event.type === "final") {
+          finalStructured = event.structured ?? null;
+        }
+      } catch {
+        // Ignore malformed SSE fragments and keep reading.
+      }
+    }
+
+    if (done) break;
+  }
+
+  return finalStructured;
 }
 
 function TtsButton({
@@ -259,7 +310,7 @@ export default function ChatPage() {
       ? { text: chineseOnly, speed: 0.85, lang: "zh" }
       : { text, speed: 1.0 };
     try {
-      const response = await fetch("/api/voice/tts", {
+      const response = await authedFetch("/api/voice/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -287,7 +338,7 @@ export default function ChatPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch("/api/models");
+        const response = await authedFetch("/api/models");
         if (!response.ok) return;
         const data = await response.json();
         if (Array.isArray(data.models) && data.models.length > 0) {
@@ -300,41 +351,49 @@ export default function ChatPage() {
   }, []);
 
   async function startSession() {
-    const response = await authedFetch("/api/session/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: "daily" })
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      setStatusMsg(`Error: ${text}`);
-      return;
+    try {
+      const response = await authedFetch("/api/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "daily" })
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        setStatusMsg(`Error: ${text}`);
+        return;
+      }
+      const data = await response.json();
+      setSessionId(data.sessionId);
+      setPlanSnippet(data.planSnippet ?? "");
+      setSessionStatus("active");
+      setStatusMsg("");
+      inputRef.current?.focus();
+    } catch {
+      setStatusMsg("Error: Could not start a session. Check your connection and try again.");
     }
-    const data = await response.json();
-    setSessionId(data.sessionId);
-    setPlanSnippet(data.planSnippet ?? "");
-    setSessionStatus("active");
-    setStatusMsg("");
-    inputRef.current?.focus();
   }
 
   async function endSession() {
     if (!sessionId) return;
-    const response = await authedFetch("/api/session/end", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, durationSec: Math.max(60, turns.length * 90), summary: "Session complete" })
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      setStatusMsg(`Error: ${text}`);
-      return;
+    try {
+      const response = await authedFetch("/api/session/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, durationSec: Math.max(60, turns.length * 90), summary: "Session complete" })
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        setStatusMsg(`Error: ${text}`);
+        return;
+      }
+      localStorage.setItem("lastSessionDate", new Date().toISOString().slice(0, 10));
+      setSessionStatus("ended");
+      setSessionId("");
+      setPlanSnippet("");
+      setStatusMsg("Session complete. Great work today!");
+    } catch {
+      setStatusMsg("Error: Could not end this session. Check your connection and try again.");
     }
-    localStorage.setItem("lastSessionDate", new Date().toISOString().slice(0, 10));
-    setSessionStatus("ended");
-    setSessionId("");
-    setPlanSnippet("");
-    setStatusMsg("Session complete. Great work today! 🎉");
   }
 
   async function send(intent?: "more_examples" | "quiz_me", saveToReview = false) {
@@ -356,27 +415,46 @@ export default function ChatPage() {
       customModel: modelSelectionMode === "custom" ? customModel : undefined,
       planSnippet: planSnippet || undefined
     };
-    const response = await authedFetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const text = await response.text();
-    setIsLoading(false);
+    try {
+      const response = await authedFetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        const text = await response.text();
+        setTurns((prev) => prev.slice(0, -1));
+        setStatusMsg(`Error: ${text}`);
+        return;
+      }
+
+      let streamedAnswer = "";
+      const structured = await readSseResponse(response, (content) => {
+        streamedAnswer += content;
+        setTurns((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            user: userMessage,
+            assistant: emptyStructured(streamedAnswer),
+            loading: false
+          };
+          return updated;
+        });
+      });
+
+      setTurns((prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = { user: userMessage, assistant: structured ?? emptyStructured(streamedAnswer), loading: false };
+        return updated;
+      });
+      setStatusMsg(saveToReview ? "Saved to review cards!" : "");
+    } catch {
       setTurns((prev) => prev.slice(0, -1));
-      setStatusMsg(`Error: ${text}`);
-      return;
+      setStatusMsg("Error: Could not reach your coach. Check your connection and try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    const structured = parseSse(text);
-    setTurns((prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1] = { user: userMessage, assistant: structured, loading: false };
-      return updated;
-    });
-    setStatusMsg(saveToReview ? "Saved to review cards!" : "");
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {

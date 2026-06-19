@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, parseBody } from "@/lib/http";
+import { errorResponse, notFound, parseBody } from "@/lib/http";
 import { chatSchema } from "@/lib/schemas";
 import type { TutorStructuredResponse } from "@/lib/types";
 import { runTutorGraph } from "@/server/agents/graph";
@@ -8,6 +8,7 @@ import {
   addSrsCards,
   appendMessage,
   deleteMemory,
+  getSessionForUser,
   listMemories,
   logAgentRun
 } from "@/server/store";
@@ -81,6 +82,11 @@ export async function POST(request: Request) {
   try {
     const body = await parseBody(request, chatSchema);
     const userId = await getUserIdFromRequest(request);
+    const session = await getSessionForUser(userId, body.sessionId);
+    if (!session) {
+      return notFound("Session not found");
+    }
+
     await appendMessage(body.sessionId, "user", body.message);
 
     const memoryCommand = parseMemoryCommand(body.message);

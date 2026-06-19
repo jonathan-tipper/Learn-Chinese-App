@@ -1,7 +1,7 @@
 import type { TutorStructuredResponse } from "@/lib/types";
 import { runTutorGraphWithLangGraph } from "@/server/agents/langgraphRuntime";
 import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
-import { getProfile, listMemories, listSessionMessages } from "@/server/store";
+import { getProfile, listMemories, listSessionMessagesForUser } from "@/server/store";
 import type { ModelSelectionMode } from "@/lib/venice";
 
 export interface GraphInput {
@@ -28,7 +28,7 @@ async function runFallbackGraph(input: GraphInput): Promise<GraphOutput> {
   const [profile, memories, sessionMessages] = await Promise.all([
     getProfile(input.userId),
     listMemories(input.userId),
-    listSessionMessages(input.sessionId)
+    listSessionMessagesForUser(input.userId, input.sessionId)
   ]);
   const memoryContext = memories.slice(0, 5).map((m) => `${m.key}: ${m.value}`);
   const recentUserMessages = sessionMessages

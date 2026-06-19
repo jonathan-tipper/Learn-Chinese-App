@@ -9,7 +9,13 @@ import type {
   SrsGrade,
   TutorStructuredResponse
 } from "@/lib/types";
-import { computeScheduling, parseReviewItem } from "@/server/store/srs";
+import {
+  computeScheduling,
+  formatReviewAnswer,
+  isValidReviewItem,
+  parseReviewItem,
+  srsCardIdentity
+} from "@/server/store/srs";
 
 const now = () => new Date().toISOString();
 
@@ -45,6 +51,11 @@ export function createSession(userId: string, mode: SessionRecord["mode"]) {
   return session;
 }
 
+export function getSessionForUser(userId: string, sessionId: string) {
+  const current = sessions.get(sessionId);
+  return current?.userId === userId ? current : null;
+}
+
 export function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
   const current = sessions.get(sessionId);
   if (!current) return null;
@@ -74,6 +85,10 @@ export function appendMessage(sessionId: string, role: MessageRecord["role"], co
 
 export function listSessionMessages(sessionId: string) {
   return messages.get(sessionId) ?? [];
+}
+
+export function listSessionMessagesForUser(userId: string, sessionId: string) {
+  return getSessionForUser(userId, sessionId) ? listSessionMessages(sessionId) : [];
 }
 
 export function listMemories(userId: string) {
@@ -107,12 +122,19 @@ export function deleteMemory(userId: string, memoryId: string) {
 
 export function addSrsCards(userId: string, items: string[]) {
   const list = srsCards.get(userId) ?? [];
-  const created = items.map<SrsCard>((item) => {
+  const seen = new Set(list.map((card) => srsCardIdentity(card.prompt, card.answer)));
+  const created: SrsCard[] = [];
+
+  for (const item of items) {
     const parsed = parseReviewItem(item);
-    const answer = parsed.english
-      ? (parsed.pinyin ? `${parsed.pinyin} — ${parsed.english}` : parsed.english)
-      : item;
-    return {
+    if (!isValidReviewItem(parsed)) continue;
+
+    const answer = formatReviewAnswer(parsed);
+    const identity = srsCardIdentity(parsed.chinese, answer);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+
+    created.push({
       id: randomUUID(),
       userId,
       prompt: parsed.chinese,
@@ -122,8 +144,9 @@ export function addSrsCards(userId: string, items: string[]) {
       ease: 2.5,
       interval: 1,
       nextDueAt: now()
-    };
-  });
+    });
+  }
+
   srsCards.set(userId, [...list, ...created]);
   return created;
 }
@@ -162,11 +185,23 @@ export function computeProgressSummary(userId: string) {
   const cards = getAllCards(userId);
   const due = getDueCards(userId, cards.length);
   const totalMinutes = userSessions.reduce((acc, s) => acc + Math.round((s.durationSec ?? 0) / 60), 0);
+  const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weeklySessions = userSessions.filter((s) => {
+    const completedAt = s.endedAt ?? s.startedAt;
+    return Boolean(s.endedAt) && new Date(completedAt).getTime() > weekStartMs;
+  });
+  const weeklyMinutes = weeklySessions.reduce((acc, s) => acc + Math.round((s.durationSec ?? 0) / 60), 0);
   const completedDays = new Set(
     userSessions
       .filter((s) => s.endedAt)
       .map((s) => (s.endedAt ?? s.startedAt).slice(0, 10))
   );
+  let streakDays = 0;
+  const cursor = new Date(new Date().toISOString().slice(0, 10));
+  while (completedDays.has(cursor.toISOString().slice(0, 10))) {
+    streakDays++;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
 
   const strugglingCards = cards.filter(
     (c) => c.ease < 2.0 || c.lastResult === "again" || c.lastResult === "hard"
@@ -188,7 +223,9 @@ export function computeProgressSummary(userId: string) {
   return {
     totalSessions: userSessions.length,
     totalMinutes,
-    streakDays: completedDays.size,
+    weeklySessions: weeklySessions.length,
+    weeklyMinutes,
+    streakDays,
     vocabLearning: cards.length,
     dueCards: due.length,
     weakAreas

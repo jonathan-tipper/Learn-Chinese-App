@@ -11,13 +11,21 @@ import { POST as srsGrade } from "@/app/api/srs/grade/route";
 import { GET as srsNext } from "@/app/api/srs/next/route";
 import { POST as voiceTts } from "@/app/api/voice/tts/route";
 import { env } from "@/lib/env";
+import {
+  addSrsCards,
+  computeProgressSummary,
+  createSession,
+  endSession,
+  getAllCards
+} from "@/server/store";
 import { resetInMemoryStore } from "@/server/store/inMemory";
 
 const userId = "11111111-1111-4111-8111-111111111111";
+const otherUserId = "22222222-2222-4222-8222-222222222222";
 const originalFetch = globalThis.fetch;
 
-function jsonRequest(url: string, method: string, body?: unknown) {
-  const headers = new Headers({ "x-user-id": userId });
+function jsonRequest(url: string, method: string, body?: unknown, requestUserId = userId) {
+  const headers = new Headers({ "x-user-id": requestUserId });
   if (body !== undefined) {
     headers.set("content-type", "application/json");
   }
@@ -64,7 +72,7 @@ describe("API smoke", () => {
           keyPoints: ["Polite request pattern"],
           examples: ["我想点一杯茶。 (I want to order a tea.)"],
           microExercise: "Rewrite with 今天.",
-          suggestedReviewItems: ["我想点一杯茶"]
+          suggestedReviewItems: ["茶 (chá) - tea"]
         };
 
         return new Response(
@@ -212,7 +220,7 @@ describe("API smoke", () => {
   });
 
   it("returns dynamic Venice model options", async () => {
-    const response = await modelsGet();
+    const response = await modelsGet(jsonRequest("http://localhost/api/models", "GET"));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -235,5 +243,100 @@ describe("API smoke", () => {
     expect(response.status).toBe(401);
     const data = await response.json();
     expect(data.error).toBe("Missing bearer token.");
+  });
+
+  it("does not allow a user to chat against another user's session", async () => {
+    const startResponse = await sessionStart(
+      jsonRequest("http://localhost/api/session/start", "POST", { mode: "daily" }, userId)
+    );
+    const startData = await startResponse.json();
+
+    const response = await chatPost(
+      jsonRequest("http://localhost/api/chat", "POST", {
+        sessionId: startData.sessionId,
+        message: "remember topic: tea",
+        verifyMode: false,
+        modelSelectionMode: "auto"
+      }, otherUserId)
+    );
+
+    expect(response.status).toBe(404);
+    const data = await response.json();
+    expect(data.error).toBe("Session not found");
+  });
+
+  it("rejects malformed session IDs before reaching the store", async () => {
+    const response = await chatPost(
+      jsonRequest("http://localhost/api/chat", "POST", {
+        sessionId: "not-a-session-id",
+        message: "remember topic: tea",
+        verifyMode: false,
+        modelSelectionMode: "auto"
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("sessionId: Invalid uuid");
+    expect(data.error).not.toContain("22P02");
+  });
+
+  it("deduplicates SRS cards and skips malformed review items", async () => {
+    const created = await addSrsCards(userId, [
+      "茶 (chá) - tea",
+      "茶 (chá) - tea",
+      "我想点一杯茶",
+      "plain English only"
+    ]);
+    const allCards = await getAllCards(userId);
+
+    expect(created).toHaveLength(1);
+    expect(allCards).toHaveLength(1);
+    expect(allCards[0]).toMatchObject({
+      prompt: "茶",
+      answer: "chá — tea"
+    });
+    expect(allCards[0].prompt).not.toBe(allCards[0].answer);
+  });
+
+  it("reports all-time totals, weekly totals, and a consecutive streak separately", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-06-01T10:00:00.000Z"));
+      const oldSession = await createSession(userId, "daily");
+      await endSession(oldSession.id, 600, "Old session", userId);
+
+      vi.setSystemTime(new Date("2026-06-08T10:00:00.000Z"));
+      const yesterdaySession = await createSession(userId, "daily");
+      await endSession(yesterdaySession.id, 300, "Yesterday session", userId);
+
+      vi.setSystemTime(new Date("2026-06-09T10:00:00.000Z"));
+      const todaySession = await createSession(userId, "daily");
+      await endSession(todaySession.id, 120, "Today session", userId);
+
+      const summary = await computeProgressSummary(userId);
+
+      expect(summary.totalSessions).toBe(3);
+      expect(summary.totalMinutes).toBe(17);
+      expect(summary.weeklySessions).toBe(2);
+      expect(summary.weeklyMinutes).toBe(7);
+      expect(summary.streakDays).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("requires auth for provider-backed model and TTS endpoints when dev fallback is disabled", async () => {
+    process.env.ALLOW_DEV_AUTH_FALLBACK = "false";
+
+    const modelsResponse = await modelsGet(new Request("http://localhost/api/models", { method: "GET" }));
+    expect(modelsResponse.status).toBe(401);
+
+    const ttsResponse = await voiceTts(new Request("http://localhost/api/voice/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "你好", lang: "zh" })
+    }));
+    expect(ttsResponse.status).toBe(401);
   });
 });

@@ -3,7 +3,7 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { env } from "@/lib/env";
 import type { TutorStructuredResponse } from "@/lib/types";
 import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
-import { getProfile, listMemories, listSessionMessages } from "@/server/store";
+import { getProfile, listMemories, listSessionMessagesForUser } from "@/server/store";
 import type { ModelSelectionMode } from "@/lib/venice";
 
 export interface LangGraphInput {
@@ -67,7 +67,7 @@ async function compileTutorGraph() {
       const [profile, memories, sessionMessages] = await Promise.all([
         getProfile(state.userId),
         listMemories(state.userId),
-        listSessionMessages(state.sessionId)
+        listSessionMessagesForUser(state.userId, state.sessionId)
       ]);
 
       const memoryContext = memories.slice(0, 5).map((m) => `${m.key}: ${m.value}`);

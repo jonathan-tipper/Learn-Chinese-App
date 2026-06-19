@@ -3,7 +3,7 @@ import type { SrsGrade } from "@/lib/types";
 /**
  * Detect whether a string contains CJK (Chinese/Japanese/Korean) characters.
  */
-const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
+export const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 
 /**
  * Parse a review item string like "请 (qǐng) - please" into structured parts.
@@ -39,6 +39,18 @@ export function parseReviewItem(item: string): { chinese: string; pinyin: string
 
   // No separable English — return the whole item as Chinese
   return { chinese: item, pinyin: "", english: "" };
+}
+
+export function formatReviewAnswer(parsed: { pinyin: string; english: string }) {
+  return parsed.pinyin ? `${parsed.pinyin} — ${parsed.english}` : parsed.english;
+}
+
+export function isValidReviewItem(parsed: { chinese: string; english: string }) {
+  return CJK_RE.test(parsed.chinese) && parsed.english.trim().length > 0 && parsed.chinese.trim() !== parsed.english.trim();
+}
+
+export function srsCardIdentity(prompt: string, answer: string) {
+  return `${prompt.trim().toLocaleLowerCase()}|${answer.trim().toLocaleLowerCase()}`;
 }
 
 export function computeScheduling(currentInterval: number, currentEase: number, grade: SrsGrade) {

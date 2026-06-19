@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
+import { env } from "@/lib/env";
+import { errorResponse, ok, parseBody } from "@/lib/http";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 
 const subscribeSchema = z.object({
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
 
     const db = getSupabaseServiceClient();
     const { error } = await db
-      .schema("learn_chinese")
+      .schema(env.supabaseDbSchema)
       .from("push_subscriptions")
       .upsert(
         {
@@ -50,7 +51,7 @@ export async function DELETE(request: Request) {
 
     const db = getSupabaseServiceClient();
     const { error } = await db
-      .schema("learn_chinese")
+      .schema(env.supabaseDbSchema)
       .from("push_subscriptions")
       .delete()
       .eq("user_id", userId)

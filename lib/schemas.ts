@@ -6,13 +6,13 @@ export const sessionStartSchema = z.object({
 });
 
 export const sessionEndSchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().uuid(),
   durationSec: z.number().int().nonnegative(),
   summary: z.string().optional()
 });
 
 export const chatSchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().uuid(),
   message: z.string().min(1),
   intent: z.string().optional(),
   saveToReview: z.boolean().optional(),
@@ -23,12 +23,12 @@ export const chatSchema = z.object({
 });
 
 export const srsGradeSchema = z.object({
-  cardId: z.string().min(1),
+  cardId: z.string().uuid(),
   grade: z.enum(["again", "hard", "good", "easy"])
 });
 
 export const memoryDeleteSchema = z.object({
-  memoryId: z.string().min(1)
+  memoryId: z.string().uuid()
 });
 
 export const ttsSchema = z.object({

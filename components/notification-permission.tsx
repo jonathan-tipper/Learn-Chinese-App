@@ -5,6 +5,7 @@ import { Bell, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { useAuth } from "@/components/auth-provider";
 
 const DISMISSED_KEY = "push-permission-dismissed";
 const VISIT_KEY     = "visit-count";
@@ -21,8 +22,10 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 export function NotificationPermission() {
   const [show, setShow] = useState(false);
+  const { user, loading } = useAuth();
 
   useEffect(() => {
+    if (loading || !user) return;
     if (!PUBLIC_VAPID_KEY) return;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
     if (Notification.permission !== "default") return; // already decided
@@ -32,7 +35,7 @@ export function NotificationPermission() {
     const visits = parseInt(localStorage.getItem(VISIT_KEY) ?? "0", 10) + 1;
     localStorage.setItem(VISIT_KEY, String(visits));
     if (visits >= 2) setShow(true);
-  }, []);
+  }, [loading, user]);
 
   async function enable() {
     try {
@@ -52,7 +55,7 @@ export function NotificationPermission() {
       const supabase = getSupabaseBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
 
-      await fetch("/api/push/subscribe", {
+      const response = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -62,6 +65,9 @@ export function NotificationPermission() {
         },
         body: JSON.stringify(sub.toJSON()),
       });
+      if (!response.ok) {
+        throw new Error("Could not save push subscription");
+      }
     } catch (err) {
       console.error("[push] subscription failed", err);
     } finally {

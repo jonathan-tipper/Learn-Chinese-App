@@ -23,6 +23,8 @@ const NAV_ITEMS = [
   { href: "/memory", label: "Memory", icon: Brain }
 ] as const;
 
+const CHROME_HIDDEN_PATHS = new Set(["/login", "/offline"]);
+
 function NavLink({
   href,
   label,
@@ -55,6 +57,7 @@ function NavLink({
 
 export function SidebarNav() {
   const pathname = usePathname();
+  if (CHROME_HIDDEN_PATHS.has(pathname)) return null;
 
   return (
     <aside className="hidden lg:flex flex-col fixed inset-y-0 left-0 w-56 bg-sidebar border-r border-sidebar-border z-30">
@@ -101,6 +104,7 @@ export function SidebarNav() {
 
 export function MobileNav() {
   const pathname = usePathname();
+  if (CHROME_HIDDEN_PATHS.has(pathname)) return null;
 
   return (
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-sidebar border-t border-sidebar-border safe-area-inset-bottom">
@@ -136,6 +140,8 @@ export function MobileNav() {
 
 export function MobileHeader() {
   const { user } = useAuth();
+  const pathname = usePathname();
+  if (CHROME_HIDDEN_PATHS.has(pathname)) return null;
 
   return (
     <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-background/95 backdrop-blur border-b border-border">

@@ -1,5 +1,6 @@
+import { getUserIdFromRequest } from "@/lib/auth";
 import { env, isVeniceEnabled } from "@/lib/env";
-import { badRequest, ok } from "@/lib/http";
+import { badRequest, errorResponse, ok } from "@/lib/http";
 import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
 
 type VeniceModel = {
@@ -10,8 +11,10 @@ type VeniceModelsResponse = {
   data?: VeniceModel[];
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await getUserIdFromRequest(request);
+
     if (!isVeniceEnabled()) {
       return badRequest("VENICE_API_KEY is required.");
     }
@@ -43,6 +46,6 @@ export async function GET() {
       }
     });
   } catch (error) {
-    return badRequest((error as Error).message);
+    return errorResponse(error);
   }
 }
