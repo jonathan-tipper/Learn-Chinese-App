@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
+  Headphones,
   Loader2,
   Mic,
   RefreshCw,
@@ -307,6 +309,28 @@ export default function ReviewPage() {
           2-minute spaced repetition — review what&apos;s due today.
         </p>
       </div>
+
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-crimson/10 text-crimson">
+              <Headphones className="h-4 w-4" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold">Tone minimal pairs</h2>
+              <p className="text-sm text-muted-foreground">
+                Practice listening for Mandarin tone contrasts without changing your SRS queue.
+              </p>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" asChild>
+            <Link href="/tone-practice">
+              Start drill
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Load + progress */}
       <Card>

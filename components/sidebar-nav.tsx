@@ -6,6 +6,7 @@ import {
   Home,
   MessageCircle,
   BookOpen,
+  Headphones,
   BarChart2,
   Brain,
   Settings,
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/review", label: "Review", icon: BookOpen },
+  { href: "/tone-practice", label: "Tones", icon: Headphones },
   { href: "/progress", label: "Progress", icon: BarChart2 },
   { href: "/memory", label: "Memory", icon: Brain }
 ] as const;

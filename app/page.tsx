@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MessageCircle, BookOpen, ChevronRight, Flame, Clock, Sparkles } from "lucide-react";
+import { MessageCircle, BookOpen, ChevronRight, Flame, Clock, Sparkles, Headphones } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +93,7 @@ export default function HomePage() {
       </div>
 
       {/* Quick action cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="group hover:border-foreground/20 hover:shadow-md transition-all duration-200 cursor-pointer">
           <CardContent className="p-0">
             <Link href="/chat" className="flex items-start gap-4 p-6">
@@ -131,6 +131,26 @@ export default function HomePage() {
                   Spaced repetition flashcards for due vocabulary.
                 </p>
                 <Badge variant="secondary" className="text-xs">~2 min</Badge>
+              </div>
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="group hover:border-foreground/20 hover:shadow-md transition-all duration-200 cursor-pointer">
+          <CardContent className="p-0">
+            <Link href="/tone-practice" className="flex items-start gap-4 p-6">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-crimson/10 group-hover:bg-crimson/20 transition-colors">
+                <Headphones className="h-5 w-5 text-crimson" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <h2 className="font-semibold text-foreground">Tone Drill</h2>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Listen and identify Mandarin tone contrasts.
+                </p>
+                <Badge variant="secondary" className="text-xs">~3 min</Badge>
               </div>
             </Link>
           </CardContent>
