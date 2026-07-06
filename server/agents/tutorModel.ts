@@ -114,6 +114,85 @@ function buildPrompt(input: {
   return lines.join("\n\n");
 }
 
+type VeniceMessageContent = string | Array<string | { text?: unknown; type?: unknown }> | null;
+
+type VeniceChatPayload = {
+  choices?: Array<{
+    finish_reason?: string;
+    message?: {
+      content?: VeniceMessageContent;
+      reasoning_content?: unknown;
+    };
+  }>;
+};
+
+function readAssistantContent(payload: VeniceChatPayload) {
+  const content = payload.choices?.[0]?.message?.content;
+
+  if (typeof content === "string") {
+    const cleaned = content.trim();
+    return cleaned ? cleaned : null;
+  }
+
+  if (Array.isArray(content)) {
+    const cleaned = content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && typeof part.text === "string") return part.text;
+        return "";
+      })
+      .join("")
+      .trim();
+
+    return cleaned ? cleaned : null;
+  }
+
+  return null;
+}
+
+function hasReasoningWithoutContent(payload: VeniceChatPayload) {
+  return Boolean(payload.choices?.[0]?.message?.reasoning_content);
+}
+
+function buildVeniceRequestBody(input: {
+  message: string;
+  intent?: string;
+  memoryContext: string[];
+  profileSummary: string;
+  recentUserMessages: string[];
+  verifyMode?: boolean;
+  planSnippet?: string;
+}, resolvedModel: ReturnType<typeof resolveVeniceModel>, retryWithoutReasoning: boolean) {
+  const prompt = `${buildPrompt(input)}\n\nModel selection strategy: ${resolvedModel.strategy}. Complexity: ${resolvedModel.complexity}.`;
+
+  return {
+    model: resolvedModel.model,
+    temperature: input.verifyMode ? 0.1 : resolvedModel.complexity === "complex" ? 0.35 : 0.25,
+    response_format: { type: "json_object" },
+    ...(retryWithoutReasoning
+      ? {
+        venice_parameters: {
+          disable_thinking: true,
+          strip_thinking_response: true
+        }
+      }
+      : {}),
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a Mandarin tutor coach. Keep responses practical, kind, and concise. Always return valid JSON matching the requested schema."
+      },
+      {
+        role: "user",
+        content: retryWithoutReasoning
+          ? `${prompt}\n\nReturn only the final JSON object in message.content. Do not put the answer in reasoning_content.`
+          : prompt
+      }
+    ]
+  };
+}
+
 async function queryVenice(input: {
   message: string;
   intent?: string;
@@ -140,45 +219,35 @@ async function queryVenice(input: {
     defaultComplexModel: env.veniceComplexModel
   });
 
-  const response = await fetch(`${env.veniceBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.veniceApiKey}`
-    },
-    body: JSON.stringify({
-      model: resolvedModel.model,
-      temperature: input.verifyMode ? 0.1 : resolvedModel.complexity === "complex" ? 0.35 : 0.25,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a Mandarin tutor coach. Keep responses practical, kind, and concise. Always return valid JSON matching the requested schema."
-        },
-        {
-          role: "user",
-          content: `${buildPrompt(input)}\n\nModel selection strategy: ${resolvedModel.strategy}. Complexity: ${resolvedModel.complexity}.`
-        }
-      ]
-    })
-  });
+  let missingContentWithReasoning = false;
 
-  if (!response.ok) {
-    throw new Error(`Venice request failed (${response.status})`);
+  for (const retryWithoutReasoning of [false, true]) {
+    if (retryWithoutReasoning && !missingContentWithReasoning) break;
+
+    const response = await fetch(`${env.veniceBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.veniceApiKey}`
+      },
+      body: JSON.stringify(buildVeniceRequestBody(input, resolvedModel, retryWithoutReasoning))
+    });
+
+    if (!response.ok) {
+      throw new Error(`Venice request failed (${response.status})`);
+    }
+
+    const payload = (await response.json()) as VeniceChatPayload;
+    const content = readAssistantContent(payload);
+    if (content) {
+      const parsed = JSON.parse(extractJsonObject(content));
+      return structuredSchema.parse(normalizeStructuredPayload(parsed));
+    }
+
+    missingContentWithReasoning = hasReasoningWithoutContent(payload);
   }
 
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("Venice response missing content");
-  }
-
-  const parsed = JSON.parse(extractJsonObject(content));
-  return structuredSchema.parse(normalizeStructuredPayload(parsed));
+  throw new Error("Venice response missing content");
 }
 
 export async function generateTutorStructuredResponse(input: {
