@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { TonePracticePrompt } from "@/lib/tone-practice";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
 
 export const sessionStartSchema = z.object({
@@ -9,6 +10,24 @@ export const sessionEndSchema = z.object({
   sessionId: z.string().uuid(),
   durationSec: z.number().int().nonnegative(),
   summary: z.string().optional()
+});
+
+export const tonePracticeAttemptSchema = z.object({
+  promptId: z.string().min(1),
+  toneContrast: z.string()
+    .regex(/^[1-4]\/[1-4]$/)
+    .transform((value) => value as TonePracticePrompt["toneContrast"]),
+  selectedAnswer: z.string().min(1),
+  correctAnswer: z.string().min(1),
+  result: z.enum(["correct", "incorrect"]),
+  selfRating: z.number().int().min(1).max(5).optional(),
+  confidence: z.number().int().min(1).max(5).optional(),
+  timestamp: z.string().datetime()
+});
+
+export const tonePracticeAttemptsSchema = z.object({
+  sessionId: z.string().uuid(),
+  attempts: z.array(tonePracticeAttemptSchema).min(1).max(25)
 });
 
 export const chatSchema = z.object({

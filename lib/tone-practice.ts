@@ -19,12 +19,22 @@ export type TonePracticePrompt = {
 };
 
 export type TonePracticeAttempt = {
+  sessionId?: string;
   promptId: string;
   toneContrast: TonePracticePrompt["toneContrast"];
   selectedAnswer: string;
   correctAnswer: string;
   result: "correct" | "incorrect";
+  selfRating?: number;
+  confidence?: number;
   timestamp: string;
+};
+
+export type TonePracticeWeakPairRollup = {
+  toneContrast: TonePracticePrompt["toneContrast"];
+  attemptedCount: number;
+  missedCount: number;
+  lastAttemptAt: string;
 };
 
 export const TONE_PRACTICE_PROMPTS: TonePracticePrompt[] = [
@@ -159,4 +169,81 @@ export function summarizeTonePracticeAttempts(attempts: TonePracticeAttempt[]) {
     correctCount: attempts.filter((attempt) => attempt.result === "correct").length,
     missedTonePairs
   };
+}
+
+function findPromptForAttempt(attempt: TonePracticeAttempt) {
+  return TONE_PRACTICE_PROMPTS.find((prompt) => prompt.id === attempt.promptId) ?? null;
+}
+
+export function normalizeTonePracticeAttempt(
+  attempt: TonePracticeAttempt,
+  sessionId?: string
+): TonePracticeAttempt {
+  const prompt = findPromptForAttempt(attempt);
+  if (!prompt) {
+    throw new Error(`Unknown tone practice prompt: ${attempt.promptId}`);
+  }
+
+  if (attempt.toneContrast !== prompt.toneContrast) {
+    throw new Error(`Tone contrast does not match prompt: ${attempt.promptId}`);
+  }
+
+  if (attempt.correctAnswer !== prompt.correctOption.id) {
+    throw new Error(`Correct answer does not match prompt: ${attempt.promptId}`);
+  }
+
+  if (!prompt.choices.some((choice) => choice.id === attempt.selectedAnswer)) {
+    throw new Error(`Selected answer does not match prompt choices: ${attempt.promptId}`);
+  }
+
+  const expectedResult = attempt.selectedAnswer === attempt.correctAnswer ? "correct" : "incorrect";
+  if (attempt.result !== expectedResult) {
+    throw new Error(`Result does not match selected answer: ${attempt.promptId}`);
+  }
+
+  return {
+    ...attempt,
+    sessionId: sessionId ?? attempt.sessionId,
+    timestamp: new Date(attempt.timestamp).toISOString()
+  };
+}
+
+export function deriveWeakTonePairRollups(
+  attempts: TonePracticeAttempt[],
+  options: { limit?: number } = {}
+): TonePracticeWeakPairRollup[] {
+  const stats = new Map<TonePracticePrompt["toneContrast"], TonePracticeWeakPairRollup>();
+
+  for (const attempt of attempts) {
+    const existing = stats.get(attempt.toneContrast) ?? {
+      toneContrast: attempt.toneContrast,
+      attemptedCount: 0,
+      missedCount: 0,
+      lastAttemptAt: attempt.timestamp
+    };
+
+    existing.attemptedCount += 1;
+    if (attempt.result === "incorrect") {
+      existing.missedCount += 1;
+    }
+    if (attempt.timestamp > existing.lastAttemptAt) {
+      existing.lastAttemptAt = attempt.timestamp;
+    }
+    stats.set(attempt.toneContrast, existing);
+  }
+
+  return Array.from(stats.values())
+    .filter((rollup) => rollup.missedCount > 0)
+    .sort((a, b) => {
+      const missedDelta = b.missedCount - a.missedCount;
+      if (missedDelta !== 0) return missedDelta;
+      const recencyDelta = b.lastAttemptAt.localeCompare(a.lastAttemptAt);
+      if (recencyDelta !== 0) return recencyDelta;
+      return a.toneContrast.localeCompare(b.toneContrast);
+    })
+    .slice(0, options.limit ?? 4);
+}
+
+export function formatWeakTonePairLabel(rollup: Pick<TonePracticeWeakPairRollup, "toneContrast">) {
+  return `tone pairs ${rollup.toneContrast} contrast`;
 }

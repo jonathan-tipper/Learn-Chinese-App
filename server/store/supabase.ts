@@ -4,10 +4,17 @@ import type {
   MemoryItem,
   MessageRecord,
   Profile,
+  SessionMetrics,
   SessionRecord,
   SrsCard,
   SrsGrade
 } from "@/lib/types";
+import {
+  deriveWeakTonePairRollups,
+  formatWeakTonePairLabel,
+  normalizeTonePracticeAttempt,
+  type TonePracticeAttempt
+} from "@/lib/tone-practice";
 import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
@@ -39,7 +46,7 @@ type SessionRow = {
   started_at: string;
   ended_at: string | null;
   summary: string | null;
-  metrics_json: { durationSec?: number } | null;
+  metrics_json: SessionMetrics | null;
 };
 
 type MessageRow = {
@@ -78,6 +85,20 @@ function asStringArray(value: unknown, fallback: string[] = []) {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : fallback;
 }
 
+function parseSessionMetrics(value: unknown): SessionMetrics {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const metrics = value as SessionMetrics;
+  return {
+    durationSec: typeof metrics.durationSec === "number" ? metrics.durationSec : undefined,
+    tonePracticeAttempts: Array.isArray(metrics.tonePracticeAttempts)
+      ? metrics.tonePracticeAttempts
+      : undefined
+  };
+}
+
 function parseMemoryValue(value: unknown) {
   if (typeof value === "string") return value;
   if (value && typeof value === "object" && "text" in value) {
@@ -88,6 +109,7 @@ function parseMemoryValue(value: unknown) {
 }
 
 function mapSession(row: SessionRow): SessionRecord {
+  const metrics = parseSessionMetrics(row.metrics_json);
   return {
     id: row.id,
     userId: row.user_id,
@@ -95,7 +117,8 @@ function mapSession(row: SessionRow): SessionRecord {
     startedAt: row.started_at,
     endedAt: row.ended_at ?? undefined,
     summary: row.summary ?? undefined,
-    durationSec: row.metrics_json?.durationSec
+    durationSec: metrics.durationSec,
+    metrics
   };
 }
 
@@ -206,7 +229,7 @@ export async function createSession(userId: string, mode: SessionRecord["mode"])
 
   if (error) throw error;
 
-  return { id, userId, mode, startedAt } satisfies SessionRecord;
+  return { id, userId, mode, startedAt, metrics: {} } satisfies SessionRecord;
 }
 
 export async function getSessionForUser(userId: string, sessionId: string) {
@@ -227,27 +250,83 @@ export async function endSession(sessionId: string, durationSec: number, summary
   const client = getSupabaseServiceClient();
   const endedAt = nowIso();
 
-  let query = client
+  let existingQuery = client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, metrics_json")
+    .eq("id", sessionId);
+
+  if (userId) {
+    existingQuery = existingQuery.eq("user_id", userId);
+  }
+
+  const { data: existing, error: selectError } = await existingQuery
+    .maybeSingle<{ id: string; metrics_json: SessionMetrics | null }>();
+
+  if (selectError) throw selectError;
+  if (!existing) return null;
+
+  const metrics = { ...parseSessionMetrics(existing.metrics_json), durationSec };
+
+  let updateQuery = client
     .schema(env.supabaseDbSchema)
     .from("sessions")
     .update({
       ended_at: endedAt,
       summary: summary ?? null,
-      metrics_json: { durationSec }
+      metrics_json: metrics
     })
     .eq("id", sessionId);
 
   if (userId) {
-    query = query.eq("user_id", userId);
+    updateQuery = updateQuery.eq("user_id", userId);
   }
 
-  const { data, error } = await query
+  const { data, error } = await updateQuery
     .select("id, user_id, mode, started_at, ended_at, summary, metrics_json")
     .maybeSingle<SessionRow>();
 
   if (error) throw error;
   if (!data) return null;
   return mapSession(data);
+}
+
+export async function recordTonePracticeAttempts(
+  userId: string,
+  sessionId: string,
+  attempts: TonePracticeAttempt[]
+) {
+  const client = getSupabaseServiceClient();
+  const { data: existing, error: selectError } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, metrics_json")
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle<{ id: string; metrics_json: SessionMetrics | null }>();
+
+  if (selectError) throw selectError;
+  if (!existing) return null;
+
+  const normalized = attempts.map((attempt) => normalizeTonePracticeAttempt(attempt, sessionId));
+  const metrics = parseSessionMetrics(existing.metrics_json);
+  const updatedMetrics = {
+    ...metrics,
+    tonePracticeAttempts: [
+      ...(metrics.tonePracticeAttempts ?? []),
+      ...normalized
+    ]
+  };
+
+  const { error: updateError } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .update({ metrics_json: updatedMetrics })
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+
+  if (updateError) throw updateError;
+  return normalized;
 }
 
 export async function listSessionsByUser(userId: string) {
@@ -543,6 +622,10 @@ export async function computeProgressSummary(userId: string) {
     (card) => card.ease < 2.0 || card.lastResult === "again" || card.lastResult === "hard"
   );
   const weakAreaSet = new Set<string>();
+  const tonePracticeAttempts = sessions.flatMap((session) => session.metrics?.tonePracticeAttempts ?? []);
+  for (const rollup of deriveWeakTonePairRollups(tonePracticeAttempts)) {
+    weakAreaSet.add(formatWeakTonePairLabel(rollup));
+  }
   for (const card of strugglingCards) {
     for (const tag of card.tags) {
       if (tag && tag !== "auto-generated") weakAreaSet.add(tag);

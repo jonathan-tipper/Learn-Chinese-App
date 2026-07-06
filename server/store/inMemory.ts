@@ -10,6 +10,12 @@ import type {
   TutorStructuredResponse
 } from "@/lib/types";
 import {
+  deriveWeakTonePairRollups,
+  formatWeakTonePairLabel,
+  normalizeTonePracticeAttempt,
+  type TonePracticeAttempt
+} from "@/lib/tone-practice";
+import {
   computeScheduling,
   formatReviewAnswer,
   isValidReviewItem,
@@ -45,7 +51,7 @@ export function getProfile(userId: string) {
 }
 
 export function createSession(userId: string, mode: SessionRecord["mode"]) {
-  const session: SessionRecord = { id: randomUUID(), userId, mode, startedAt: now() };
+  const session: SessionRecord = { id: randomUUID(), userId, mode, startedAt: now(), metrics: {} };
   sessions.set(session.id, session);
   messages.set(session.id, []);
   return session;
@@ -60,9 +66,31 @@ export function endSession(sessionId: string, durationSec: number, summary?: str
   const current = sessions.get(sessionId);
   if (!current) return null;
   if (userId && current.userId !== userId) return null;
-  const updated = { ...current, endedAt: now(), durationSec, summary };
+  const metrics = { ...(current.metrics ?? {}), durationSec };
+  const updated = { ...current, endedAt: now(), durationSec, summary, metrics };
   sessions.set(sessionId, updated);
   return updated;
+}
+
+export function recordTonePracticeAttempts(
+  userId: string,
+  sessionId: string,
+  attempts: TonePracticeAttempt[]
+) {
+  const current = getSessionForUser(userId, sessionId);
+  if (!current) return null;
+
+  const normalized = attempts.map((attempt) => normalizeTonePracticeAttempt(attempt, sessionId));
+  const metrics = {
+    ...(current.metrics ?? {}),
+    tonePracticeAttempts: [
+      ...(current.metrics?.tonePracticeAttempts ?? []),
+      ...normalized
+    ]
+  };
+  const updated = { ...current, metrics, durationSec: metrics.durationSec };
+  sessions.set(sessionId, updated);
+  return normalized;
 }
 
 export function listSessionsByUser(userId: string) {
@@ -207,6 +235,10 @@ export function computeProgressSummary(userId: string) {
     (c) => c.ease < 2.0 || c.lastResult === "again" || c.lastResult === "hard"
   );
   const weakAreaSet = new Set<string>();
+  const tonePracticeAttempts = userSessions.flatMap((session) => session.metrics?.tonePracticeAttempts ?? []);
+  for (const rollup of deriveWeakTonePairRollups(tonePracticeAttempts)) {
+    weakAreaSet.add(formatWeakTonePairLabel(rollup));
+  }
   for (const card of strugglingCards) {
     for (const tag of card.tags) {
       if (tag && tag !== "auto-generated") weakAreaSet.add(tag);
