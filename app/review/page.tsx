@@ -30,13 +30,27 @@ type Card = { id: string; prompt: string; answer: string; hints: string[] };
 type SpeechRecognitionResultEventLike = {
   results?: ArrayLike<ArrayLike<{ transcript?: string }>>;
 };
-type WebkitSpeechRecognitionLike = {
-  lang: string;
-  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
+type SpeechRecognitionErrorEventLike = Event & {
+  error?: string;
 };
-type WebkitSpeechRecognitionConstructor = new () => WebkitSpeechRecognitionLike;
+type BrowserSpeechRecognitionLike = {
+  lang: string;
+  continuous?: boolean;
+  interimResults?: boolean;
+  maxAlternatives?: number;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  onnomatch?: (() => void) | null;
+  start: () => void;
+  stop?: () => void;
+  abort?: () => void;
+};
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognitionLike;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+};
 
 const characterQuestions = [
   { hanzi: "你", pinyin: "ni3", meaning: "you" },
@@ -55,6 +69,7 @@ const GRADE_CONFIG = {
 
 type Grade = keyof typeof GRADE_CONFIG;
 
+const SPEAKING_TARGET = "我今天想点一杯茶";
 const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 const LEGACY_PREFIX_RE = /^Translate or use:\s*/i;
 
@@ -102,6 +117,33 @@ function isMalformedCard(prompt: string, answer: string): boolean {
   return cleanedPrompt === cleanedAnswer || (CJK_RE.test(cleanedAnswer) && !/[a-zA-Z]/.test(cleanedAnswer));
 }
 
+function normalizeSpeechText(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, "");
+}
+
+function getSpeakingFeedback(transcript: string): { type: "success" | "retry"; message: string } {
+  const normalizedTranscript = normalizeSpeechText(transcript);
+  const normalizedTarget = normalizeSpeechText(SPEAKING_TARGET);
+
+  if (!normalizedTranscript) {
+    return { type: "retry", message: "No Mandarin phrase was captured. Try again in a quieter spot." };
+  }
+
+  if (normalizedTranscript === normalizedTarget) {
+    return { type: "success", message: "Matched the phrase. Good capture." };
+  }
+
+  const substantialPartial = normalizedTarget.includes(normalizedTranscript)
+    && normalizedTranscript.length >= normalizedTarget.length - 2;
+  if (normalizedTranscript.includes(normalizedTarget) || substantialPartial) {
+    return { type: "success", message: "Close match. Try once more if you want a cleaner capture." };
+  }
+
+  return { type: "retry", message: "That did not match the phrase yet. Try speaking the full sentence slowly." };
+}
+
 export default function ReviewPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [completedCount, setCompletedCount] = useState(0);
@@ -114,11 +156,13 @@ export default function ReviewPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [spokenText, setSpokenText] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [speechError, setSpeechError] = useState("");
   const [characterInput, setCharacterInput] = useState("");
   const [characterIndex, setCharacterIndex] = useState(0);
   const [charFeedback, setCharFeedback] = useState<"correct" | "wrong" | null>(null);
   const [ttsLoadingId, setTtsLoadingId] = useState<string | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognitionLike | null>(null);
 
   async function playTts(cardId: string, text: string) {
     // Stop any currently playing audio
@@ -149,6 +193,10 @@ export default function ReviewPage() {
     () => characterQuestions[characterIndex % characterQuestions.length],
     [characterIndex]
   );
+  const speakingFeedback = useMemo(
+    () => spokenText ? getSpeakingFeedback(spokenText) : null,
+    [spokenText]
+  );
 
   const progressPct = totalLoaded > 0 ? (completedCount / totalLoaded) * 100 : 0;
 
@@ -168,6 +216,13 @@ export default function ReviewPage() {
     // Also drain immediately in case we loaded the page with queued grades and are now online
     if (navigator.onLine) void handleOnline();
     return () => window.removeEventListener("online", handleOnline);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      speechRecognitionRef.current?.abort?.();
+      speechRecognitionRef.current = null;
+    };
   }, []);
 
   async function loadDue() {
@@ -269,22 +324,63 @@ export default function ReviewPage() {
   }
 
   function startSpeechInput() {
-    const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: WebkitSpeechRecognitionConstructor }).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setStatus({ type: "error", message: "Speech input unavailable in this browser." });
+    if (isListening) {
+      speechRecognitionRef.current?.stop?.();
+      setIsListening(false);
       return;
     }
+
+    const SpeechRecognition = (window as SpeechRecognitionWindow).SpeechRecognition
+      ?? (window as SpeechRecognitionWindow).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechError("Speech input is unavailable in this browser. Try Chrome, Edge, or Safari with microphone access enabled.");
+      return;
+    }
+
     const recognition = new SpeechRecognition();
     recognition.lang = "zh-CN";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
     recognition.onresult = (event) => {
       const transcript = event.results?.[0]?.[0]?.transcript ?? "";
-      setSpokenText(transcript);
+      if (transcript.trim()) {
+        setSpokenText(transcript);
+        setSpeechError("");
+      } else {
+        setSpeechError("No speech was captured. Try again in a quieter spot.");
+      }
       setIsListening(false);
     };
-    recognition.onend = () => setIsListening(false);
-    recognition.start();
-    setIsListening(true);
-    setSpokenText("");
+    recognition.onerror = (event) => {
+      const message = event.error === "not-allowed" || event.error === "service-not-allowed"
+        ? "Microphone access was blocked. Allow microphone access and try again."
+        : event.error === "no-speech"
+          ? "No speech was detected. Try again in a quieter spot."
+          : "Speech input stopped before anything was captured. Try again.";
+      setSpeechError(message);
+      setIsListening(false);
+    };
+    recognition.onnomatch = () => {
+      setSpeechError("No Mandarin phrase was recognized. Try speaking a little more slowly.");
+      setIsListening(false);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      speechRecognitionRef.current = null;
+    };
+
+    try {
+      speechRecognitionRef.current = recognition;
+      setSpeechError("");
+      setSpokenText("");
+      recognition.start();
+      setIsListening(true);
+    } catch {
+      speechRecognitionRef.current = null;
+      setIsListening(false);
+      setSpeechError("Speech input could not start. Check microphone permissions and try again.");
+    }
   }
 
   function checkCharacterAnswer() {
@@ -526,7 +622,10 @@ export default function ReviewPage() {
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground"
-                  onClick={() => setSpokenText("")}
+                  onClick={() => {
+                    setSpokenText("");
+                    setSpeechError("");
+                  }}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Clear
@@ -534,10 +633,33 @@ export default function ReviewPage() {
               )}
             </div>
 
+            {speechError && (
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive animate-fade-in">
+                <XCircle className="h-3.5 w-3.5 shrink-0" />
+                {speechError}
+              </div>
+            )}
+
             {spokenText && (
-              <div className="rounded-lg bg-muted px-3 py-2 animate-fade-in">
+              <div className={cn(
+                "rounded-lg px-3 py-2 animate-fade-in",
+                speakingFeedback?.type === "success" ? "bg-jade/10" : "bg-muted"
+              )}>
                 <p className="text-xs text-muted-foreground mb-1">Captured:</p>
                 <p className="text-sm font-medium">{spokenText}</p>
+                {speakingFeedback && (
+                  <p className={cn(
+                    "mt-2 flex items-center gap-1.5 text-xs",
+                    speakingFeedback.type === "success" ? "text-jade" : "text-muted-foreground"
+                  )}>
+                    {speakingFeedback.type === "success" ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <XCircle className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    {speakingFeedback.message}
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
