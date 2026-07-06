@@ -1,4 +1,5 @@
 import { isSupabaseStoreEnabled } from "@/lib/env";
+import type { TonePracticeAttempt } from "@/lib/tone-practice";
 import type { AgentRun, MemoryItem, MessageRecord, Profile, SessionRecord, SrsGrade } from "@/lib/types";
 import { synthesizeTutorResponse } from "@/server/store/inMemory";
 import * as inMemory from "@/server/store/inMemory";
@@ -32,6 +33,16 @@ export async function endSession(sessionId: string, durationSec: number, summary
   return shouldUseSupabaseStore()
     ? supabase.endSession(sessionId, durationSec, summary, userId)
     : inMemory.endSession(sessionId, durationSec, summary, userId);
+}
+
+export async function recordTonePracticeAttempts(
+  userId: string,
+  sessionId: string,
+  attempts: TonePracticeAttempt[]
+) {
+  return shouldUseSupabaseStore()
+    ? supabase.recordTonePracticeAttempts(userId, sessionId, attempts)
+    : inMemory.recordTonePracticeAttempts(userId, sessionId, attempts);
 }
 
 export async function listSessionsByUser(userId: string) {

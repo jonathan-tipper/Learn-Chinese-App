@@ -1,8 +1,15 @@
+import type { TonePracticeAttempt } from "@/lib/tone-practice";
+
 export type CoachStyle = "strict" | "friendly" | "playful" | "concise";
 export type SessionMode = "daily" | "ask" | "quick";
 export type MessageRole = "user" | "assistant" | "system";
 export type SrsGrade = "again" | "hard" | "good" | "easy";
 export type ModelSelectionMode = "auto" | "simple" | "complex" | "custom";
+
+export interface SessionMetrics {
+  durationSec?: number;
+  tonePracticeAttempts?: TonePracticeAttempt[];
+}
 
 export interface Profile {
   userId: string;
@@ -24,6 +31,7 @@ export interface SessionRecord {
   endedAt?: string;
   summary?: string;
   durationSec?: number;
+  metrics?: SessionMetrics;
 }
 
 export interface MessageRecord {

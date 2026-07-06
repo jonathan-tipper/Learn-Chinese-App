@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   TONE_PRACTICE_PROMPTS,
   buildTonePracticeAttempt,
+  deriveWeakTonePairRollups,
+  formatWeakTonePairLabel,
   getTonePracticePrompts,
   summarizeTonePracticeAttempts
 } from "@/lib/tone-practice";
@@ -63,5 +65,40 @@ describe("tone practice attempts", () => {
       correctCount: 1,
       missedTonePairs: [first.toneContrast]
     });
+  });
+
+  it("derives recent weak tone-pair rollups without claiming pronunciation scoring", () => {
+    const first = TONE_PRACTICE_PROMPTS[1];
+    const second = TONE_PRACTICE_PROMPTS[2];
+    const wrongFirst = first.choices.find((choice) => choice.id !== first.correctOption.id)!;
+    const wrongSecond = second.choices.find((choice) => choice.id !== second.correctOption.id)!;
+
+    const attempts = [
+      buildTonePracticeAttempt(first, wrongFirst.id, "2026-07-05T20:00:00.000Z"),
+      buildTonePracticeAttempt(first, first.correctOption.id, "2026-07-05T20:01:00.000Z"),
+      buildTonePracticeAttempt(second, wrongSecond.id, "2026-07-05T20:02:00.000Z"),
+      buildTonePracticeAttempt(first, wrongFirst.id, "2026-07-05T20:03:00.000Z")
+    ];
+
+    const rollups = deriveWeakTonePairRollups(attempts, { limit: 2 });
+
+    expect(rollups).toEqual([
+      {
+        toneContrast: first.toneContrast,
+        attemptedCount: 3,
+        missedCount: 2,
+        lastAttemptAt: "2026-07-05T20:03:00.000Z"
+      },
+      {
+        toneContrast: second.toneContrast,
+        attemptedCount: 1,
+        missedCount: 1,
+        lastAttemptAt: "2026-07-05T20:02:00.000Z"
+      }
+    ]);
+    expect(rollups.map(formatWeakTonePairLabel)).toEqual([
+      `tone pairs ${first.toneContrast} contrast`,
+      `tone pairs ${second.toneContrast} contrast`
+    ]);
   });
 });

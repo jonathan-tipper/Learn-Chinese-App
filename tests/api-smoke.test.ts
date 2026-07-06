@@ -9,8 +9,10 @@ import { POST as sessionEnd } from "@/app/api/session/end/route";
 import { POST as sessionStart } from "@/app/api/session/start/route";
 import { POST as srsGrade } from "@/app/api/srs/grade/route";
 import { GET as srsNext } from "@/app/api/srs/next/route";
+import { POST as tonePracticeAttemptsPost } from "@/app/api/tone-practice/attempts/route";
 import { POST as voiceTts } from "@/app/api/voice/tts/route";
 import { env } from "@/lib/env";
+import { buildTonePracticeAttempt, TONE_PRACTICE_PROMPTS } from "@/lib/tone-practice";
 import {
   addSrsCards,
   computeProgressSummary,
@@ -263,6 +265,81 @@ describe("API smoke", () => {
     expect(response.status).toBe(404);
     const data = await response.json();
     expect(data.error).toBe("Session not found");
+  });
+
+  it("records tone practice evidence for the current user's session and exposes weak-pair progress context", async () => {
+    const session = await createSession(userId, "quick");
+    const prompt = TONE_PRACTICE_PROMPTS[1];
+    const wrongChoice = prompt.choices.find((choice) => choice.id !== prompt.correctOption.id)!;
+    const attempt = buildTonePracticeAttempt(prompt, wrongChoice.id, "2026-07-05T20:00:00.000Z");
+    const cardsBefore = await addSrsCards(userId, ["茶 (chá) - tea"]);
+
+    const response = await tonePracticeAttemptsPost(
+      jsonRequest("http://localhost/api/tone-practice/attempts", "POST", {
+        sessionId: session.id,
+        attempts: [{ ...attempt, confidence: 2 }]
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.recordedCount).toBe(1);
+    expect(data.weakTonePairs).toEqual([`tone pairs ${prompt.toneContrast} contrast`]);
+
+    const summary = await computeProgressSummary(userId);
+    expect(summary.weakAreas).toContain(`tone pairs ${prompt.toneContrast} contrast`);
+    expect(await getAllCards(userId)).toEqual(cardsBefore);
+
+    await endSession(session.id, 180, "Tone drill", userId);
+    const endedSummary = await computeProgressSummary(userId);
+    expect(endedSummary.totalMinutes).toBe(3);
+  });
+
+  it("rejects tone practice attempts for another user's session", async () => {
+    const session = await createSession(userId, "quick");
+    const prompt = TONE_PRACTICE_PROMPTS[0];
+
+    const response = await tonePracticeAttemptsPost(
+      jsonRequest("http://localhost/api/tone-practice/attempts", "POST", {
+        sessionId: session.id,
+        attempts: [buildTonePracticeAttempt(prompt, prompt.correctOption.id, "2026-07-05T20:00:00.000Z")]
+      }, otherUserId)
+    );
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toBe("Session not found");
+  });
+
+  it("rejects malformed tone practice attempt payloads", async () => {
+    const session = await createSession(userId, "quick");
+
+    const response = await tonePracticeAttemptsPost(
+      jsonRequest("http://localhost/api/tone-practice/attempts", "POST", {
+        sessionId: session.id,
+        attempts: [{
+          promptId: "",
+          toneContrast: "7/9",
+          selectedAnswer: "ma1-mother",
+          correctAnswer: "ma1-mother",
+          result: "maybe",
+          timestamp: "not-a-date"
+        }]
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("attempts.0.promptId");
+    expect(data.error).toContain("attempts.0.result");
+  });
+
+  it("keeps progress defaults empty when no tone practice evidence exists", async () => {
+    await createSession(userId, "quick");
+
+    const summary = await computeProgressSummary(userId);
+
+    expect(summary.weakAreas).toEqual([]);
   });
 
   it("rejects malformed session IDs before reaching the store", async () => {
