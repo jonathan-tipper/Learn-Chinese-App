@@ -13,6 +13,7 @@ import { POST as tonePracticeAttemptsPost } from "@/app/api/tone-practice/attemp
 import { POST as voiceTts } from "@/app/api/voice/tts/route";
 import { env } from "@/lib/env";
 import { buildTonePracticeAttempt, TONE_PRACTICE_PROMPTS } from "@/lib/tone-practice";
+import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
 import {
   addSrsCards,
   computeProgressSummary,
@@ -231,6 +232,65 @@ describe("API smoke", () => {
     expect(data.models).toContain("zai-org-glm-5");
     expect(data.defaults.simple).toBe("zai-org-glm-4.7");
     expect(data.defaults.complex).toBe("zai-org-glm-5");
+  });
+
+  it("retries tutor generation when Venice returns reasoning without assistant content", async () => {
+    let chatCompletionCalls = 0;
+
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = typeof input === "string" ? input : input.url;
+
+      if (url.includes("/chat/completions")) {
+        chatCompletionCalls += 1;
+
+        if (chatCompletionCalls === 1) {
+          return new Response(
+            JSON.stringify({
+              choices: [{ finish_reason: "stop", message: { content: "", reasoning_content: "Thinking..." } }]
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    answer: "Here is the retry response.",
+                    keyPoints: ["Retry handled"],
+                    examples: ["谢谢。 (Thank you.)"],
+                    microExercise: "Say thank you in Chinese.",
+                    suggestedReviewItems: ["谢谢 (xiè xiè) - thank you"]
+                  })
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        );
+      }
+
+      throw new Error(`Unexpected external fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    const structured = await generateTutorStructuredResponse({
+      message: "Why does 谢谢 repeat the syllable?",
+      memoryContext: [],
+      profileSummary: "No saved profile yet.",
+      recentUserMessages: [],
+      modelSelectionMode: "complex"
+    });
+
+    expect(structured.answer).toBe("Here is the retry response.");
+    expect(chatCompletionCalls).toBe(2);
   });
 
   it("requires bearer auth when dev fallback is disabled", async () => {
