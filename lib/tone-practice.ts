@@ -247,3 +247,7 @@ export function deriveWeakTonePairRollups(
 export function formatWeakTonePairLabel(rollup: Pick<TonePracticeWeakPairRollup, "toneContrast">) {
   return `tone pairs ${rollup.toneContrast} contrast`;
 }
+
+export function formatToneFocusLabel(rollup: Pick<TonePracticeWeakPairRollup, "toneContrast">) {
+  return `tone focus: ${rollup.toneContrast} contrast`;
+}

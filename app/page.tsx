@@ -25,6 +25,7 @@ type Continuity = {
   when: string;
   summary: string | null;
   mode: string;
+  toneFocus?: string;
 } | null;
 
 export default function HomePage() {
@@ -239,7 +240,15 @@ export default function HomePage() {
                     : `Your last session was on ${continuity.sessionDate}.`}
                   {continuity.summary ? ` ${continuity.summary}` : " Start a new session to continue your learning journey."}
                 </p>
-                <Badge variant="secondary">{continuity.mode === "quick" ? "Quick practice" : continuity.mode === "ask" ? "Ask mode" : "Daily session"}</Badge>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{continuity.mode === "quick" ? "Quick practice" : continuity.mode === "ask" ? "Ask mode" : "Daily session"}</Badge>
+                  {continuity.toneFocus && (
+                    <Badge variant="outline" className="gap-1">
+                      <Headphones className="h-3 w-3" />
+                      {continuity.toneFocus}
+                    </Badge>
+                  )}
+                </div>
               </>
             ) : (
               <p className="text-sm text-muted-foreground leading-relaxed">

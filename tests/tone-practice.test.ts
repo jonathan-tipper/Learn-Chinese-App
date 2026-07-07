@@ -4,6 +4,7 @@ import {
   buildTonePracticeAttempt,
   deriveWeakTonePairRollups,
   formatWeakTonePairLabel,
+  formatToneFocusLabel,
   getTonePracticePrompts,
   summarizeTonePracticeAttempts
 } from "@/lib/tone-practice";
@@ -100,5 +101,6 @@ describe("tone practice attempts", () => {
       `tone pairs ${first.toneContrast} contrast`,
       `tone pairs ${second.toneContrast} contrast`
     ]);
+    expect(formatToneFocusLabel(rollups[0])).toBe(`tone focus: ${first.toneContrast} contrast`);
   });
 });
