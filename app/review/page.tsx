@@ -32,6 +32,7 @@ type SpeechRecognitionResultEventLike = {
 };
 type SpeechRecognitionErrorEventLike = Event & {
   error?: string;
+  message?: string;
 };
 type BrowserSpeechRecognitionLike = {
   lang: string;
@@ -144,6 +145,30 @@ function getSpeakingFeedback(transcript: string): { type: "success" | "retry"; m
   return { type: "retry", message: "That did not match the phrase yet. Try speaking the full sentence slowly." };
 }
 
+function getSpeechRecognitionErrorMessage(event: SpeechRecognitionErrorEventLike): string {
+  switch (event.error) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "Microphone access was blocked. Allow microphone access and try again.";
+    case "no-speech":
+      return "No speech was detected. Try again in a quieter spot.";
+    case "audio-capture":
+      return "No microphone was detected. Check your microphone input and try again.";
+    case "network":
+      return "Speech recognition could not reach the browser speech service. Check your connection or VPN and try again.";
+    case "language-not-supported":
+      return "Mandarin speech recognition is not available in this browser. Try Chrome, Edge, or Safari.";
+    case "aborted":
+      return "Listening was cancelled before anything was captured.";
+    case "bad-grammar":
+      return "Speech recognition could not start with the current grammar settings. Try again.";
+    default:
+      return event.error
+        ? `Speech input failed with browser error "${event.error}". Try again.`
+        : "Speech input stopped before anything was captured. Try again.";
+  }
+}
+
 export default function ReviewPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [completedCount, setCompletedCount] = useState(0);
@@ -163,6 +188,7 @@ export default function ReviewPage() {
   const [ttsLoadingId, setTtsLoadingId] = useState<string | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const speechRecognitionRef = useRef<BrowserSpeechRecognitionLike | null>(null);
+  const speechStopRequestedRef = useRef(false);
 
   async function playTts(cardId: string, text: string) {
     // Stop any currently playing audio
@@ -325,6 +351,7 @@ export default function ReviewPage() {
 
   function startSpeechInput() {
     if (isListening) {
+      speechStopRequestedRef.current = true;
       speechRecognitionRef.current?.stop?.();
       setIsListening(false);
       return;
@@ -343,6 +370,7 @@ export default function ReviewPage() {
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.onresult = (event) => {
+      speechStopRequestedRef.current = false;
       const transcript = event.results?.[0]?.[0]?.transcript ?? "";
       if (transcript.trim()) {
         setSpokenText(transcript);
@@ -353,31 +381,33 @@ export default function ReviewPage() {
       setIsListening(false);
     };
     recognition.onerror = (event) => {
-      const message = event.error === "not-allowed" || event.error === "service-not-allowed"
-        ? "Microphone access was blocked. Allow microphone access and try again."
-        : event.error === "no-speech"
-          ? "No speech was detected. Try again in a quieter spot."
-          : "Speech input stopped before anything was captured. Try again.";
-      setSpeechError(message);
+      if (!(speechStopRequestedRef.current && event.error === "aborted")) {
+        setSpeechError(getSpeechRecognitionErrorMessage(event));
+      }
+      speechStopRequestedRef.current = false;
       setIsListening(false);
     };
     recognition.onnomatch = () => {
+      speechStopRequestedRef.current = false;
       setSpeechError("No Mandarin phrase was recognized. Try speaking a little more slowly.");
       setIsListening(false);
     };
     recognition.onend = () => {
+      speechStopRequestedRef.current = false;
       setIsListening(false);
       speechRecognitionRef.current = null;
     };
 
     try {
       speechRecognitionRef.current = recognition;
+      speechStopRequestedRef.current = false;
       setSpeechError("");
       setSpokenText("");
       recognition.start();
       setIsListening(true);
     } catch {
       speechRecognitionRef.current = null;
+      speechStopRequestedRef.current = false;
       setIsListening(false);
       setSpeechError("Speech input could not start. Check microphone permissions and try again.");
     }
