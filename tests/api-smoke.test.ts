@@ -4,6 +4,7 @@ import { DELETE as memoryDelete } from "@/app/api/memory/delete/route";
 import { GET as memoryList } from "@/app/api/memory/list/route";
 import { GET as modelsGet } from "@/app/api/models/route";
 import { POST as onboardingSave } from "@/app/api/onboarding/save/route";
+import { GET as progressContinuity } from "@/app/api/progress/continuity/route";
 import { GET as progressSummary } from "@/app/api/progress/summary/route";
 import { POST as sessionEnd } from "@/app/api/session/end/route";
 import { POST as sessionStart } from "@/app/api/session/start/route";
@@ -400,6 +401,39 @@ describe("API smoke", () => {
     const summary = await computeProgressSummary(userId);
 
     expect(summary.weakAreas).toEqual([]);
+  });
+
+  it("surfaces weak tone-pair context in continuity after completed tone practice", async () => {
+    const session = await createSession(userId, "quick");
+    const prompt = TONE_PRACTICE_PROMPTS[1];
+    const wrongChoice = prompt.choices.find((choice) => choice.id !== prompt.correctOption.id)!;
+
+    await tonePracticeAttemptsPost(
+      jsonRequest("http://localhost/api/tone-practice/attempts", "POST", {
+        sessionId: session.id,
+        attempts: [buildTonePracticeAttempt(prompt, wrongChoice.id, "2026-07-05T20:00:00.000Z")]
+      })
+    );
+    await endSession(session.id, 180, "Tone drill", userId);
+
+    const response = await progressContinuity(jsonRequest("http://localhost/api/progress/continuity", "GET"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.continuity.summary).toBe("Tone drill");
+    expect(data.continuity.toneFocus).toBe(`tone focus: ${prompt.toneContrast} contrast`);
+  });
+
+  it("omits tone focus from continuity when no weak tone attempts exist", async () => {
+    const session = await createSession(userId, "quick");
+    await endSession(session.id, 120, "Quick review", userId);
+
+    const response = await progressContinuity(jsonRequest("http://localhost/api/progress/continuity", "GET"));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.continuity.summary).toBe("Quick review");
+    expect(data.continuity).not.toHaveProperty("toneFocus");
   });
 
   it("rejects malformed session IDs before reaching the store", async () => {

@@ -1,11 +1,15 @@
 import { getUserIdFromRequest } from "@/lib/auth";
 import { errorResponse, ok } from "@/lib/http";
-import { getLastCompletedSession } from "@/server/store";
+import { deriveWeakTonePairRollups, formatToneFocusLabel } from "@/lib/tone-practice";
+import { getLastCompletedSession, listSessionsByUser } from "@/server/store";
 
 export async function GET(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
-    const lastSession = await getLastCompletedSession(userId);
+    const [lastSession, sessions] = await Promise.all([
+      getLastCompletedSession(userId),
+      listSessionsByUser(userId)
+    ]);
 
     if (!lastSession) {
       return ok({ continuity: null });
@@ -19,12 +23,17 @@ export async function GET(request: Request) {
     if (sessionDate === today) when = "today";
     else if (sessionDate === yesterday) when = "yesterday";
 
+    const tonePracticeAttempts = sessions.flatMap((session) => session.metrics?.tonePracticeAttempts ?? []);
+    const toneFocus = deriveWeakTonePairRollups(tonePracticeAttempts, { limit: 1 })
+      .map(formatToneFocusLabel)[0];
+
     return ok({
       continuity: {
         sessionDate,
         when,
         summary: lastSession.summary ?? null,
-        mode: lastSession.mode
+        mode: lastSession.mode,
+        ...(toneFocus ? { toneFocus } : {})
       }
     });
   } catch (error) {
