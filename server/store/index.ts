@@ -87,6 +87,16 @@ export async function getAllCards(userId: string) {
   return shouldUseSupabaseStore() ? supabase.getAllCards(userId) : inMemory.getAllCards(userId);
 }
 
+export async function addVocabItems(userId: string, items: string[], sourceSessionId?: string) {
+  return shouldUseSupabaseStore()
+    ? supabase.addVocabItems(userId, items, sourceSessionId)
+    : inMemory.addVocabItems(userId, items, sourceSessionId);
+}
+
+export async function listVocabItems(userId: string) {
+  return shouldUseSupabaseStore() ? supabase.listVocabItems(userId) : inMemory.listVocabItems(userId);
+}
+
 export async function getDueCards(userId: string, limit = 10) {
   return shouldUseSupabaseStore() ? supabase.getDueCards(userId, limit) : inMemory.getDueCards(userId, limit);
 }

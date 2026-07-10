@@ -7,7 +7,8 @@ import type {
   SessionMetrics,
   SessionRecord,
   SrsCard,
-  SrsGrade
+  SrsGrade,
+  VocabItem
 } from "@/lib/types";
 import {
   deriveWeakTonePairRollups,
@@ -22,8 +23,10 @@ import {
   computeScheduling,
   formatReviewAnswer,
   isValidReviewItem,
+  parseVocabItem,
   parseReviewItem,
-  srsCardIdentity
+  srsCardIdentity,
+  vocabItemIdentity
 } from "@/server/store/srs";
 
 const nowIso = () => new Date().toISOString();
@@ -79,6 +82,17 @@ type SrsRow = {
   interval: number;
   next_due_at: string;
   last_result: SrsGrade | null;
+};
+
+type VocabRow = {
+  id: string;
+  user_id: string;
+  hanzi: string;
+  pinyin: string | null;
+  english: string | null;
+  tags: unknown;
+  source_session_id: string | null;
+  created_at: string;
 };
 
 function asStringArray(value: unknown, fallback: string[] = []) {
@@ -147,6 +161,19 @@ function mapCard(row: SrsRow): SrsCard {
     interval: row.interval,
     nextDueAt: row.next_due_at,
     lastResult: row.last_result ?? undefined
+  };
+}
+
+function mapVocabItem(row: VocabRow): VocabItem {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    hanzi: row.hanzi,
+    pinyin: row.pinyin ?? undefined,
+    english: row.english ?? undefined,
+    tags: asStringArray(row.tags),
+    sourceSessionId: row.source_session_id ?? undefined,
+    createdAt: row.created_at
   };
 }
 
@@ -508,6 +535,87 @@ export async function getAllCards(userId: string) {
 
   if (error) throw error;
   return (data ?? []).map(mapCard);
+}
+
+export async function addVocabItems(userId: string, items: string[], sourceSessionId?: string) {
+  if (!items.length) return [];
+
+  const client = getSupabaseServiceClient();
+  const existing = await listVocabItems(userId);
+  const upserted: VocabItem[] = [];
+  const seenInput = new Set<string>();
+
+  for (const item of items) {
+    const parsed = parseVocabItem(item);
+    if (!parsed) continue;
+
+    const identity = vocabItemIdentity(parsed.hanzi, parsed.pinyin);
+    if (seenInput.has(identity)) continue;
+    seenInput.add(identity);
+
+    const existingItem = existing.find((current) => vocabItemIdentity(current.hanzi, current.pinyin) === identity);
+    if (existingItem) {
+      const { data, error } = await client
+        .schema(env.supabaseDbSchema)
+        .from("vocab_items")
+        .update({
+          pinyin: parsed.pinyin ?? existingItem.pinyin ?? null,
+          english: parsed.english ?? existingItem.english ?? null,
+          source_session_id: sourceSessionId ?? existingItem.sourceSessionId ?? null
+        })
+        .eq("id", existingItem.id)
+        .eq("user_id", userId)
+        .select("id, user_id, hanzi, pinyin, english, tags, source_session_id, created_at")
+        .maybeSingle<VocabRow>();
+
+      if (error) throw error;
+      if (data) {
+        const mapped = mapVocabItem(data);
+        upserted.push(mapped);
+        const existingIndex = existing.findIndex((current) => current.id === mapped.id);
+        if (existingIndex >= 0) existing[existingIndex] = mapped;
+      }
+      continue;
+    }
+
+    const { data, error } = await client
+      .schema(env.supabaseDbSchema)
+      .from("vocab_items")
+      .insert({
+        id: randomUUID(),
+        user_id: userId,
+        hanzi: parsed.hanzi,
+        pinyin: parsed.pinyin ?? null,
+        english: parsed.english ?? null,
+        tags: ["auto-generated"],
+        source_session_id: sourceSessionId ?? null
+      })
+      .select("id, user_id, hanzi, pinyin, english, tags, source_session_id, created_at")
+      .maybeSingle<VocabRow>();
+
+    if (error) throw error;
+    if (data) {
+      const mapped = mapVocabItem(data);
+      existing.push(mapped);
+      upserted.push(mapped);
+    }
+  }
+
+  return upserted;
+}
+
+export async function listVocabItems(userId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("vocab_items")
+    .select("id, user_id, hanzi, pinyin, english, tags, source_session_id, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .returns<VocabRow[]>();
+
+  if (error) throw error;
+  return (data ?? []).map(mapVocabItem);
 }
 
 export async function getDueCards(userId: string, limit = 10) {

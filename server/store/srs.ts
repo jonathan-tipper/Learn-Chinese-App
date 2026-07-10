@@ -49,6 +49,21 @@ export function isValidReviewItem(parsed: { chinese: string; english: string }) 
   return CJK_RE.test(parsed.chinese) && parsed.english.trim().length > 0 && parsed.chinese.trim() !== parsed.english.trim();
 }
 
+export function parseVocabItem(item: string) {
+  const parsed = parseReviewItem(item);
+  if (!isValidReviewItem(parsed)) return null;
+
+  return {
+    hanzi: parsed.chinese.trim(),
+    pinyin: parsed.pinyin.trim() || undefined,
+    english: parsed.english.trim() || undefined
+  };
+}
+
+export function vocabItemIdentity(hanzi: string, pinyin?: string) {
+  return `${hanzi.trim().toLocaleLowerCase()}|${(pinyin ?? "").trim().toLocaleLowerCase()}`;
+}
+
 export function srsCardIdentity(prompt: string, answer: string) {
   return `${prompt.trim().toLocaleLowerCase()}|${answer.trim().toLocaleLowerCase()}`;
 }

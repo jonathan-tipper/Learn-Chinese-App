@@ -66,6 +66,17 @@ export interface SrsCard {
   lastResult?: SrsGrade;
 }
 
+export interface VocabItem {
+  id: string;
+  userId: string;
+  hanzi: string;
+  pinyin?: string;
+  english?: string;
+  tags: string[];
+  sourceSessionId?: string;
+  createdAt: string;
+}
+
 export interface AgentRun {
   id: string;
   userId: string;
