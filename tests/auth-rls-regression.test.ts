@@ -20,7 +20,7 @@ import { POST as srsGrade } from "@/app/api/srs/grade/route";
 import { GET as srsNext } from "@/app/api/srs/next/route";
 import { POST as tonePracticeAttemptsPost } from "@/app/api/tone-practice/attempts/route";
 import { POST as voiceTts } from "@/app/api/voice/tts/route";
-import { addMemory, addSrsCards, createSession, endSession } from "@/server/store";
+import { addMemory, addSrsCards, addVocabItems, createSession, endSession, listVocabItems } from "@/server/store";
 import { resetInMemoryStore } from "@/server/store/inMemory";
 
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -235,6 +235,7 @@ describe("auth and RLS regression coverage", () => {
     const session = await createSession(userId, "daily");
     await addMemory(userId, "topic", "tea", "preference");
     const [card] = await addSrsCards(userId, ["茶 (chá) - tea"]);
+    await addVocabItems(userId, ["茶 (chá) - tea"], session.id);
     await endSession(session.id, 180, "Practiced ordering tea", userId);
 
     const crossUserChatResponse = await chatPost(
@@ -275,6 +276,8 @@ describe("auth and RLS regression coverage", () => {
       jsonRequest("http://localhost/api/srs/next?limit=5", "GET", undefined, otherUserId)
     );
     await expect(readJson(otherCardsResponse)).resolves.toMatchObject({ cards: [] });
+    expect(await listVocabItems(userId)).toHaveLength(1);
+    expect(await listVocabItems(otherUserId)).toEqual([]);
 
     const crossUserGradeResponse = await srsGrade(
       jsonRequest("http://localhost/api/srs/grade", "POST", {
@@ -302,11 +305,12 @@ describe("auth and RLS regression coverage", () => {
 
   it("keeps critical user-owned tables protected by RLS owner policies in migrations", () => {
     const sql = migrationSql();
-    const ownerTables = ["profiles", "sessions", "memories", "srs_cards", "agent_runs"];
+    const ownerTables = ["profiles", "sessions", "memories", "vocab_items", "srs_cards", "agent_runs"];
 
     for (const table of ownerTables) {
       expect(sql).toContain(`alter table learn_chinese.${table} enable row level security`);
-      expect(sql).toContain(`policy ${table === "agent_runs" ? "runs" : table.replace("_cards", "")}_owner`);
+      const policyPrefix = table === "agent_runs" ? "runs" : table === "vocab_items" ? "vocab" : table.replace("_cards", "");
+      expect(sql).toContain(`policy ${policyPrefix}_owner`);
       expect(sql).toContain(`on learn_chinese.${table}`);
     }
 

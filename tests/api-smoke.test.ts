@@ -17,10 +17,12 @@ import { buildTonePracticeAttempt, TONE_PRACTICE_PROMPTS } from "@/lib/tone-prac
 import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
 import {
   addSrsCards,
+  addVocabItems,
   computeProgressSummary,
   createSession,
   endSession,
-  getAllCards
+  getAllCards,
+  listVocabItems
 } from "@/server/store";
 import { resetInMemoryStore } from "@/server/store/inMemory";
 
@@ -178,6 +180,16 @@ describe("API smoke", () => {
     }));
     const nextCardsData = await nextCardsResponse.json();
     expect(nextCardsData.cards.length).toBeGreaterThan(0);
+    const vocabItems = await listVocabItems(userId);
+    expect(vocabItems).toEqual([
+      expect.objectContaining({
+        userId,
+        hanzi: "茶",
+        pinyin: "chá",
+        english: "tea",
+        sourceSessionId: sessionId
+      })
+    ]);
 
     const firstCardId = nextCardsData.cards[0].id as string;
     const gradeResponse = await srsGrade(
@@ -468,6 +480,34 @@ describe("API smoke", () => {
       answer: "chá — tea"
     });
     expect(allCards[0].prompt).not.toBe(allCards[0].answer);
+  });
+
+  it("upserts vocabulary items per user from valid review items", async () => {
+    const session = await createSession(userId, "daily");
+
+    const first = await addVocabItems(userId, [
+      "茶 (chá) - tea",
+      "茶 (chá) - tea",
+      "plain English only",
+      "我想点一杯茶"
+    ], session.id);
+    const second = await addVocabItems(userId, ["茶 (chá) - tea; tea leaf"], session.id);
+
+    const ownItems = await listVocabItems(userId);
+    const otherItems = await listVocabItems(otherUserId);
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(ownItems).toHaveLength(1);
+    expect(ownItems[0]).toMatchObject({
+      userId,
+      hanzi: "茶",
+      pinyin: "chá",
+      english: "tea; tea leaf",
+      sourceSessionId: session.id,
+      tags: ["auto-generated"]
+    });
+    expect(otherItems).toEqual([]);
   });
 
   it("reports all-time totals, weekly totals, and a consecutive streak separately", async () => {

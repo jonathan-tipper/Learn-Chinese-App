@@ -7,7 +7,8 @@ import type {
   SessionRecord,
   SrsCard,
   SrsGrade,
-  TutorStructuredResponse
+  TutorStructuredResponse,
+  VocabItem
 } from "@/lib/types";
 import {
   deriveWeakTonePairRollups,
@@ -19,8 +20,10 @@ import {
   computeScheduling,
   formatReviewAnswer,
   isValidReviewItem,
+  parseVocabItem,
   parseReviewItem,
-  srsCardIdentity
+  srsCardIdentity,
+  vocabItemIdentity
 } from "@/server/store/srs";
 
 const now = () => new Date().toISOString();
@@ -29,6 +32,7 @@ const sessions = new Map<string, SessionRecord>();
 const messages = new Map<string, MessageRecord[]>();
 const memories = new Map<string, MemoryItem[]>();
 const srsCards = new Map<string, SrsCard[]>();
+const vocabItems = new Map<string, VocabItem[]>();
 const profiles = new Map<string, Profile>();
 const agentRuns: AgentRun[] = [];
 
@@ -37,6 +41,7 @@ export function resetInMemoryStore() {
   messages.clear();
   memories.clear();
   srsCards.clear();
+  vocabItems.clear();
   profiles.clear();
   agentRuns.length = 0;
 }
@@ -181,6 +186,55 @@ export function addSrsCards(userId: string, items: string[]) {
 
 export function getAllCards(userId: string) {
   return srsCards.get(userId) ?? [];
+}
+
+export function addVocabItems(userId: string, items: string[], sourceSessionId?: string) {
+  const list = vocabItems.get(userId) ?? [];
+  const upserted: VocabItem[] = [];
+  const seenInput = new Set<string>();
+
+  for (const item of items) {
+    const parsed = parseVocabItem(item);
+    if (!parsed) continue;
+
+    const identity = vocabItemIdentity(parsed.hanzi, parsed.pinyin);
+    if (seenInput.has(identity)) continue;
+    seenInput.add(identity);
+
+    const existingIndex = list.findIndex((current) => vocabItemIdentity(current.hanzi, current.pinyin) === identity);
+    if (existingIndex >= 0) {
+      const existing = list[existingIndex];
+      const updated = {
+        ...existing,
+        pinyin: parsed.pinyin ?? existing.pinyin,
+        english: parsed.english ?? existing.english,
+        sourceSessionId: sourceSessionId ?? existing.sourceSessionId
+      };
+      list[existingIndex] = updated;
+      upserted.push(updated);
+      continue;
+    }
+
+    const created: VocabItem = {
+      id: randomUUID(),
+      userId,
+      hanzi: parsed.hanzi,
+      pinyin: parsed.pinyin,
+      english: parsed.english,
+      tags: ["auto-generated"],
+      sourceSessionId,
+      createdAt: now()
+    };
+    list.push(created);
+    upserted.push(created);
+  }
+
+  vocabItems.set(userId, list);
+  return upserted;
+}
+
+export function listVocabItems(userId: string) {
+  return vocabItems.get(userId) ?? [];
 }
 
 export function getDueCards(userId: string, limit = 10) {

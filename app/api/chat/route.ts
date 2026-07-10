@@ -6,6 +6,7 @@ import { runTutorGraph } from "@/server/agents/graph";
 import {
   addMemory,
   addSrsCards,
+  addVocabItems,
   appendMessage,
   deleteMemory,
   getSessionForUser,
@@ -129,6 +130,7 @@ export async function POST(request: Request) {
 
     await appendMessage(body.sessionId, "assistant", answer);
     const cards = await addSrsCards(userId, reviewItems);
+    await addVocabItems(userId, reviewItems, body.sessionId);
 
     await logAgentRun({
       userId,
