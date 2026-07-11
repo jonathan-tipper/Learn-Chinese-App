@@ -82,6 +82,8 @@ export interface AgentRun {
   userId: string;
   sessionId: string;
   nodeName: string;
+  provider: string;
+  tokens: number;
   latencyMs: number;
   costEstimate: number;
   createdAt: string;

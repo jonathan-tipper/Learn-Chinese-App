@@ -109,6 +109,12 @@ export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
   return shouldUseSupabaseStore() ? supabase.logAgentRun(run) : inMemory.logAgentRun(run);
 }
 
+export async function getSessionAgentUsage(userId: string, sessionId: string) {
+  return shouldUseSupabaseStore()
+    ? supabase.getSessionAgentUsage(userId, sessionId)
+    : inMemory.getSessionAgentUsage(userId, sessionId);
+}
+
 export async function computeProgressSummary(userId: string) {
   return shouldUseSupabaseStore() ? supabase.computeProgressSummary(userId) : inMemory.computeProgressSummary(userId);
 }

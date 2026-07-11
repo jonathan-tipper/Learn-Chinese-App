@@ -22,6 +22,8 @@ import {
   createSession,
   endSession,
   getAllCards,
+  getSessionAgentUsage,
+  logAgentRun,
   listVocabItems
 } from "@/server/store";
 import { resetInMemoryStore } from "@/server/store/inMemory";
@@ -173,6 +175,7 @@ describe("API smoke", () => {
     const sseBody = await tutorResponse.text();
     const finalEvent = parseSseFinal(sseBody);
     expect(finalEvent?.structured?.answer).toBeTruthy();
+    expect(finalEvent?.budget).toMatchObject({ status: "allow", currentTokens: 0, maxTokens: 12_000 });
 
     const nextCardsResponse = await srsNext(new Request("http://localhost/api/srs/next?limit=5", {
       method: "GET",
@@ -219,6 +222,43 @@ describe("API smoke", () => {
       })
     );
     expect(endResponse.status).toBe(200);
+  });
+
+  it("limits chat before a provider call when session usage would exceed the budget", async () => {
+    const session = await createSession(userId, "daily");
+    await logAgentRun({
+      userId,
+      sessionId: session.id,
+      nodeName: "TutorResponse",
+      provider: "venice",
+      tokens: 900,
+      latencyMs: 25,
+      costEstimate: 0.001
+    });
+    const usage = await getSessionAgentUsage(userId, session.id);
+    expect(usage).toEqual({ tokens: 900, costEstimate: 0.001 });
+
+    const previousMax = process.env.SESSION_BUDGET_MAX_TOKENS;
+    process.env.SESSION_BUDGET_MAX_TOKENS = "1000";
+    try {
+      const fetchMock = vi.mocked(globalThis.fetch);
+      const callsBefore = fetchMock.mock.calls.length;
+      const response = await chatPost(jsonRequest("http://localhost/api/chat", "POST", {
+        sessionId: session.id,
+        message: "Teach me one useful phrase.",
+        modelSelectionMode: "auto"
+      }));
+
+      expect(response.status).toBe(429);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "SESSION_BUDGET_LIMIT",
+        budget: { status: "limit", currentTokens: 900, maxTokens: 1_000 }
+      });
+      expect(fetchMock.mock.calls).toHaveLength(callsBefore);
+    } finally {
+      if (previousMax === undefined) delete process.env.SESSION_BUDGET_MAX_TOKENS;
+      else process.env.SESSION_BUDGET_MAX_TOKENS = previousMax;
+    }
   });
 
   it("falls back to Venice TTS when ElevenLabs is not configured", async () => {

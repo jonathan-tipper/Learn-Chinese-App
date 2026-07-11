@@ -1,7 +1,14 @@
 import { getUserIdFromRequest } from "@/lib/auth";
+import { isVeniceEnabled } from "@/lib/env";
 import { errorResponse, notFound, parseBody } from "@/lib/http";
 import { chatSchema } from "@/lib/schemas";
 import type { TutorStructuredResponse } from "@/lib/types";
+import {
+  estimateCostUsd,
+  estimateTokens,
+  evaluateSessionBudget,
+  parseSessionBudgetConfig
+} from "@/lib/session-budget";
 import { runTutorGraph } from "@/server/agents/graph";
 import {
   addMemory,
@@ -10,6 +17,7 @@ import {
   appendMessage,
   deleteMemory,
   getSessionForUser,
+  getSessionAgentUsage,
   listMemories,
   logAgentRun
 } from "@/server/store";
@@ -109,6 +117,18 @@ export async function POST(request: Request) {
       return streamFinal(answer);
     }
 
+    const budgetConfig = parseSessionBudgetConfig();
+    const usage = await getSessionAgentUsage(userId, body.sessionId);
+    const estimatedNextTokens = estimateTokens(body.message);
+    const initialBudget = evaluateSessionBudget(budgetConfig, usage.tokens, estimatedNextTokens);
+    if (initialBudget.status === "limit") {
+      return Response.json({
+        error: "This session has reached its estimated usage limit. Start a new session to continue.",
+        code: "SESSION_BUDGET_LIMIT",
+        budget: initialBudget
+      }, { status: 429 });
+    }
+
     const started = Date.now();
     const graph = await runTutorGraph({
       userId,
@@ -127,6 +147,8 @@ export async function POST(request: Request) {
     }
 
     const reviewItems = deriveReviewItems(graph.structured, body.message, body.saveToReview);
+    const actualTokens = estimateTokens(`${body.message}\n${answer}`, 0);
+    const finalBudget = evaluateSessionBudget(budgetConfig, usage.tokens, actualTokens);
 
     await appendMessage(body.sessionId, "assistant", answer);
     const cards = await addSrsCards(userId, reviewItems);
@@ -136,8 +158,10 @@ export async function POST(request: Request) {
       userId,
       sessionId: body.sessionId,
       nodeName: "TutorResponse",
+      provider: isVeniceEnabled() ? "venice" : "local-fallback",
+      tokens: actualTokens,
       latencyMs: Date.now() - started,
-      costEstimate: 0.001
+      costEstimate: estimateCostUsd(actualTokens, budgetConfig)
     });
 
     const stream = new ReadableStream({
@@ -147,7 +171,7 @@ export async function POST(request: Request) {
         }
         controller.enqueue(
           sseEncoder.encode(
-            `data: ${JSON.stringify({ type: "final", structured: { ...graph.structured, answer }, nodesExecuted: graph.nodesExecuted, createdReviewCards: cards.length })}\n\n`
+            `data: ${JSON.stringify({ type: "final", structured: { ...graph.structured, answer }, nodesExecuted: graph.nodesExecuted, createdReviewCards: cards.length, budget: finalBudget })}\n\n`
           )
         );
         controller.close();

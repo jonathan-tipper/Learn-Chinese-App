@@ -262,6 +262,18 @@ export function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
   agentRuns.push({ ...run, id: randomUUID(), createdAt: now() });
 }
 
+export function getSessionAgentUsage(userId: string, sessionId: string) {
+  return agentRuns
+    .filter((run) => run.userId === userId && run.sessionId === sessionId)
+    .reduce(
+      (total, run) => ({
+        tokens: total.tokens + run.tokens,
+        costEstimate: total.costEstimate + run.costEstimate
+      }),
+      { tokens: 0, costEstimate: 0 }
+    );
+}
+
 export function computeProgressSummary(userId: string) {
   const userSessions = listSessionsByUser(userId);
   const cards = getAllCards(userId);
