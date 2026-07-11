@@ -37,6 +37,10 @@ Copy `.env.example` to `.env.local` and fill the values you need:
   - `VENICE_COMPLEX_MODEL`
   - `VENICE_TTS_MODEL` (audio fallback)
   - `VENICE_TTS_VOICE` (audio fallback)
+  - `SESSION_BUDGET_ENABLED` (defaults to `true`)
+  - `SESSION_BUDGET_MAX_TOKENS` (defaults to `12000` estimated tokens per session)
+  - `SESSION_BUDGET_WARNING_RATIO` (defaults to `0.8`)
+  - `SESSION_BUDGET_ESTIMATED_USD_PER_1K_TOKENS` (defaults to `0.001`; an estimate, not billing data)
 - ElevenLabs (primary TTS provider):
   - `ELEVENLABS_API_KEY`
   - `ELEVENLABS_VOICE_ID`

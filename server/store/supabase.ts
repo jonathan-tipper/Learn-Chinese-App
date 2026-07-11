@@ -676,6 +676,8 @@ export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
     user_id: run.userId,
     session_id: run.sessionId,
     node_name: run.nodeName,
+    provider: run.provider,
+    tokens: run.tokens,
     latency_ms: run.latencyMs,
     cost_estimate: run.costEstimate,
     created_at: nowIso()
@@ -683,6 +685,24 @@ export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
 
   const { error } = await from(client, "agent_runs").insert(payload);
   if (error) throw error;
+}
+
+export async function getSessionAgentUsage(userId: string, sessionId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await from(client, "agent_runs")
+    .select("tokens, cost_estimate")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .returns<Array<{ tokens: number | null; cost_estimate: number | string | null }>>();
+
+  if (error) throw error;
+  return (data ?? []).reduce(
+    (total, row) => ({
+      tokens: total.tokens + (row.tokens ?? 0),
+      costEstimate: total.costEstimate + Number(row.cost_estimate ?? 0)
+    }),
+    { tokens: 0, costEstimate: 0 }
+  );
 }
 
 export async function getLastCompletedSession(userId: string): Promise<SessionRecord | null> {
