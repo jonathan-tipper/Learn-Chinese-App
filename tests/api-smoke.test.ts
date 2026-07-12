@@ -23,6 +23,7 @@ import {
   endSession,
   getAllCards,
   getSessionAgentUsage,
+  listLearningEvents,
   logAgentRun,
   listVocabItems
 } from "@/server/store";
@@ -222,6 +223,11 @@ describe("API smoke", () => {
       })
     );
     expect(endResponse.status).toBe(200);
+    expect(await listLearningEvents(userId)).toEqual([
+      expect.objectContaining({ name: "session_started", sessionId }),
+      expect.objectContaining({ name: "review_completed" }),
+      expect.objectContaining({ name: "session_ended", sessionId, metadata: { durationSec: 180 } })
+    ]);
   });
 
   it("limits chat before a provider call when session usage would exceed the budget", async () => {

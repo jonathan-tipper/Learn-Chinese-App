@@ -1,6 +1,7 @@
 import { isSupabaseStoreEnabled } from "@/lib/env";
 import type { TonePracticeAttempt } from "@/lib/tone-practice";
 import type { AgentRun, MemoryItem, MessageRecord, Profile, SessionRecord, SrsGrade } from "@/lib/types";
+import type { LearningEventInput } from "@/lib/learning-events";
 import { synthesizeTutorResponse } from "@/server/store/inMemory";
 import * as inMemory from "@/server/store/inMemory";
 import * as supabase from "@/server/store/supabase";
@@ -22,7 +23,15 @@ export async function getProfile(userId: string) {
 }
 
 export async function createSession(userId: string, mode: SessionRecord["mode"]) {
-  return shouldUseSupabaseStore() ? supabase.createSession(userId, mode) : inMemory.createSession(userId, mode);
+  const session = shouldUseSupabaseStore() ? await supabase.createSession(userId, mode) : inMemory.createSession(userId, mode);
+  await recordLearningEvent({
+    userId,
+    sessionId: session.id,
+    name: "session_started",
+    occurredAt: session.startedAt,
+    metadata: { mode }
+  });
+  return session;
 }
 
 export async function getSessionForUser(userId: string, sessionId: string) {
@@ -30,9 +39,20 @@ export async function getSessionForUser(userId: string, sessionId: string) {
 }
 
 export async function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
-  return shouldUseSupabaseStore()
+  const session = shouldUseSupabaseStore()
     ? supabase.endSession(sessionId, durationSec, summary, userId)
     : inMemory.endSession(sessionId, durationSec, summary, userId);
+  const resolved = await session;
+  if (resolved) {
+    await recordLearningEvent({
+      userId: resolved.userId,
+      sessionId: resolved.id,
+      name: "session_ended",
+      occurredAt: resolved.endedAt,
+      metadata: { durationSec: resolved.durationSec ?? durationSec }
+    });
+  }
+  return resolved;
 }
 
 export async function recordTonePracticeAttempts(
@@ -102,7 +122,25 @@ export async function getDueCards(userId: string, limit = 10) {
 }
 
 export async function gradeCard(userId: string, cardId: string, grade: SrsGrade) {
-  return shouldUseSupabaseStore() ? supabase.gradeCard(userId, cardId, grade) : inMemory.gradeCard(userId, cardId, grade);
+  const card = shouldUseSupabaseStore()
+    ? await supabase.gradeCard(userId, cardId, grade)
+    : inMemory.gradeCard(userId, cardId, grade);
+  if (card) {
+    await recordLearningEvent({ userId, name: "review_completed", metadata: { grade } });
+  }
+  return card;
+}
+
+export async function recordLearningEvent(input: LearningEventInput) {
+  return shouldUseSupabaseStore()
+    ? supabase.recordLearningEvent(input)
+    : inMemory.recordLearningEvent(input);
+}
+
+export async function listLearningEvents(userId: string) {
+  return shouldUseSupabaseStore()
+    ? supabase.listLearningEvents(userId)
+    : inMemory.listLearningEvents(userId);
 }
 
 export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
