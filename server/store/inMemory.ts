@@ -10,6 +10,7 @@ import type {
   TutorStructuredResponse,
   VocabItem
 } from "@/lib/types";
+import { buildLearningEvent, type LearningEvent, type LearningEventInput } from "@/lib/learning-events";
 import {
   deriveWeakTonePairRollups,
   formatWeakTonePairLabel,
@@ -35,6 +36,7 @@ const srsCards = new Map<string, SrsCard[]>();
 const vocabItems = new Map<string, VocabItem[]>();
 const profiles = new Map<string, Profile>();
 const agentRuns: AgentRun[] = [];
+const learningEvents: LearningEvent[] = [];
 
 export function resetInMemoryStore() {
   sessions.clear();
@@ -44,6 +46,7 @@ export function resetInMemoryStore() {
   vocabItems.clear();
   profiles.clear();
   agentRuns.length = 0;
+  learningEvents.length = 0;
 }
 
 export function saveProfile(profile: Profile) {
@@ -272,6 +275,22 @@ export function getSessionAgentUsage(userId: string, sessionId: string) {
       }),
       { tokens: 0, costEstimate: 0 }
     );
+}
+
+export function recordLearningEvent(input: LearningEventInput) {
+  if (input.sessionId && input.name !== "review_completed") {
+    const existing = learningEvents.find(
+      (event) => event.sessionId === input.sessionId && event.name === input.name
+    );
+    if (existing) return existing;
+  }
+  const event = buildLearningEvent(input);
+  learningEvents.push(event);
+  return event;
+}
+
+export function listLearningEvents(userId: string) {
+  return learningEvents.filter((event) => event.userId === userId);
 }
 
 export function computeProgressSummary(userId: string) {

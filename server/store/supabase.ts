@@ -10,6 +10,7 @@ import type {
   SrsGrade,
   VocabItem
 } from "@/lib/types";
+import { buildLearningEvent, type LearningEventInput } from "@/lib/learning-events";
 import {
   deriveWeakTonePairRollups,
   formatWeakTonePairLabel,
@@ -93,6 +94,15 @@ type VocabRow = {
   tags: unknown;
   source_session_id: string | null;
   created_at: string;
+};
+
+type LearningEventRow = {
+  id: string;
+  user_id: string;
+  session_id: string | null;
+  event_name: LearningEventInput["name"];
+  metadata: Record<string, unknown>;
+  occurred_at: string;
 };
 
 function asStringArray(value: unknown, fallback: string[] = []) {
@@ -703,6 +713,43 @@ export async function getSessionAgentUsage(userId: string, sessionId: string) {
     }),
     { tokens: 0, costEstimate: 0 }
   );
+}
+
+export async function recordLearningEvent(input: LearningEventInput) {
+  const event = buildLearningEvent(input);
+  const client = getSupabaseServiceClient();
+  const { error } = await from(client, "learning_events").upsert({
+    id: event.id,
+    user_id: event.userId,
+    session_id: event.sessionId ?? null,
+    event_name: event.name,
+    metadata: event.metadata,
+    occurred_at: event.occurredAt
+  }, { onConflict: "session_id,event_name", ignoreDuplicates: true });
+
+  if (error) throw error;
+  return event;
+}
+
+export async function listLearningEvents(userId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await from(client, "learning_events")
+    .select("id, user_id, session_id, event_name, metadata, occurred_at")
+    .eq("user_id", userId)
+    .order("occurred_at", { ascending: true })
+    .returns<LearningEventRow[]>();
+
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    ...buildLearningEvent({
+      userId: row.user_id,
+      sessionId: row.session_id ?? undefined,
+      name: row.event_name,
+      occurredAt: row.occurred_at,
+      metadata: row.metadata
+    }),
+    id: row.id
+  }));
 }
 
 export async function getLastCompletedSession(userId: string): Promise<SessionRecord | null> {

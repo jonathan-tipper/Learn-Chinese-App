@@ -305,11 +305,15 @@ describe("auth and RLS regression coverage", () => {
 
   it("keeps critical user-owned tables protected by RLS owner policies in migrations", () => {
     const sql = migrationSql();
-    const ownerTables = ["profiles", "sessions", "memories", "vocab_items", "srs_cards", "agent_runs"];
+    const ownerTables = ["profiles", "sessions", "memories", "vocab_items", "srs_cards", "agent_runs", "learning_events"];
 
     for (const table of ownerTables) {
       expect(sql).toContain(`alter table learn_chinese.${table} enable row level security`);
-      const policyPrefix = table === "agent_runs" ? "runs" : table === "vocab_items" ? "vocab" : table.replace("_cards", "");
+      const policyPrefix = table === "agent_runs"
+        ? "runs"
+        : table === "vocab_items"
+          ? "vocab"
+          : table.replace("_cards", "");
       expect(sql).toContain(`policy ${policyPrefix}_owner`);
       expect(sql).toContain(`on learn_chinese.${table}`);
     }
