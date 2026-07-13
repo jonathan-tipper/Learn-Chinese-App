@@ -23,11 +23,13 @@ import {
   endSession,
   getAllCards,
   getSessionAgentUsage,
+  listGrammarPoints,
   listLearningEvents,
   logAgentRun,
   listVocabItems
 } from "@/server/store";
 import { resetInMemoryStore } from "@/server/store/inMemory";
+import * as inMemoryStore from "@/server/store/inMemory";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const otherUserId = "22222222-2222-4222-8222-222222222222";
@@ -81,6 +83,12 @@ describe("API smoke", () => {
           keyPoints: ["Polite request pattern"],
           examples: ["我想点一杯茶。 (I want to order a tea.)"],
           microExercise: "Rewrite with 今天.",
+          grammarPoints: [{
+            title: "想 + verb",
+            explanation: "Use 想 before a verb to express what someone wants to do.",
+            examples: ["我想点一杯茶。"],
+            confidence: "high"
+          }],
           suggestedReviewItems: ["茶 (chá) - tea"]
         };
 
@@ -194,6 +202,15 @@ describe("API smoke", () => {
         sourceSessionId: sessionId
       })
     ]);
+    expect(await listGrammarPoints(userId)).toEqual([
+      expect.objectContaining({
+        userId,
+        title: "想 + verb",
+        explanation: "Use 想 before a verb to express what someone wants to do.",
+        examples: ["我想点一杯茶。"]
+      })
+    ]);
+    expect(await listGrammarPoints(otherUserId)).toEqual([]);
 
     const firstCardId = nextCardsData.cards[0].id as string;
     const gradeResponse = await srsGrade(
@@ -265,6 +282,52 @@ describe("API smoke", () => {
       if (previousMax === undefined) delete process.env.SESSION_BUDGET_MAX_TOKENS;
       else process.env.SESSION_BUDGET_MAX_TOKENS = previousMax;
     }
+  });
+
+  it("skips uncertain grammar signals without failing chat", async () => {
+    const session = await createSession(userId, "daily");
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        answer: "Here is a cautious explanation.",
+        keyPoints: ["Check the context"],
+        examples: ["我喝茶。"],
+        microExercise: "Write one sentence.",
+        suggestedReviewItems: ["茶 (chá) - tea"],
+        grammarPoints: [
+          { title: "Maybe a pattern", explanation: "This might be a rule.", confidence: "low" },
+          { title: "Missing explanation", confidence: "high" }
+        ]
+      }) } }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+
+    const response = await chatPost(jsonRequest("http://localhost/api/chat", "POST", {
+      sessionId: session.id,
+      message: "Is this a grammar rule?",
+      modelSelectionMode: "auto"
+    }));
+
+    expect(response.status).toBe(200);
+    expect(parseSseFinal(await response.text())?.structured?.answer).toBe("Here is a cautious explanation.");
+    expect(await listGrammarPoints(userId)).toEqual([]);
+  });
+
+  it("keeps grammar persistence failure non-blocking", async () => {
+    const session = await createSession(userId, "daily");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(inMemoryStore, "addGrammarPoints").mockImplementation(() => {
+      throw new Error("grammar store unavailable");
+    });
+
+    const response = await chatPost(jsonRequest("http://localhost/api/chat", "POST", {
+      sessionId: session.id,
+      message: "Teach me how to order tea politely.",
+      modelSelectionMode: "auto"
+    }));
+
+    expect(response.status).toBe(200);
+    expect(parseSseFinal(await response.text())?.structured?.answer).toBeTruthy();
+    expect(consoleError).toHaveBeenCalledWith("Failed to persist grammar points", expect.any(Error));
+    expect(await listVocabItems(userId)).toHaveLength(1);
   });
 
   it("falls back to Venice TTS when ElevenLabs is not configured", async () => {

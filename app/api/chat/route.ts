@@ -12,6 +12,7 @@ import {
 import { runTutorGraph } from "@/server/agents/graph";
 import {
   addMemory,
+  addGrammarPoints,
   addSrsCards,
   addVocabItems,
   appendMessage,
@@ -153,6 +154,11 @@ export async function POST(request: Request) {
     await appendMessage(body.sessionId, "assistant", answer);
     const cards = await addSrsCards(userId, reviewItems);
     await addVocabItems(userId, reviewItems, body.sessionId);
+    try {
+      await addGrammarPoints(userId, graph.structured.grammarPoints ?? []);
+    } catch (error) {
+      console.error("Failed to persist grammar points", error);
+    }
 
     await logAgentRun({
       userId,

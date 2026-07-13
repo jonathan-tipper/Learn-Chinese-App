@@ -1,6 +1,6 @@
 import { isSupabaseStoreEnabled } from "@/lib/env";
 import type { TonePracticeAttempt } from "@/lib/tone-practice";
-import type { AgentRun, MemoryItem, MessageRecord, Profile, SessionRecord, SrsGrade } from "@/lib/types";
+import type { AgentRun, GrammarPointSignal, MemoryItem, MessageRecord, Profile, SessionRecord, SrsGrade } from "@/lib/types";
 import type { LearningEventInput } from "@/lib/learning-events";
 import { synthesizeTutorResponse } from "@/server/store/inMemory";
 import * as inMemory from "@/server/store/inMemory";
@@ -115,6 +115,16 @@ export async function addVocabItems(userId: string, items: string[], sourceSessi
 
 export async function listVocabItems(userId: string) {
   return shouldUseSupabaseStore() ? supabase.listVocabItems(userId) : inMemory.listVocabItems(userId);
+}
+
+export async function addGrammarPoints(userId: string, signals: GrammarPointSignal[]) {
+  return shouldUseSupabaseStore()
+    ? supabase.addGrammarPoints(userId, signals)
+    : inMemory.addGrammarPoints(userId, signals);
+}
+
+export async function listGrammarPoints(userId: string) {
+  return shouldUseSupabaseStore() ? supabase.listGrammarPoints(userId) : inMemory.listGrammarPoints(userId);
 }
 
 export async function getDueCards(userId: string, limit = 10) {
