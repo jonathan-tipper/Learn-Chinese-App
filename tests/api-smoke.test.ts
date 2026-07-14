@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as chatPost } from "@/app/api/chat/route";
+import { GET as charactersList } from "@/app/api/characters/route";
 import { DELETE as memoryDelete } from "@/app/api/memory/delete/route";
 import { GET as memoryList } from "@/app/api/memory/list/route";
 import { GET as modelsGet } from "@/app/api/models/route";
@@ -23,6 +24,7 @@ import {
   endSession,
   getAllCards,
   getSessionAgentUsage,
+  listCharacterCards,
   listLearningEvents,
   logAgentRun,
   listVocabItems
@@ -554,6 +556,39 @@ describe("API smoke", () => {
       tags: ["auto-generated"]
     });
     expect(otherItems).toEqual([]);
+  });
+
+  it("lists studied character cards without exposing another user's data", async () => {
+    const session = await createSession(userId, "daily");
+    await addVocabItems(userId, ["茶 (chá) - tea"], session.id);
+    await addSrsCards(userId, ["茶 (chá) - tea"]);
+    await addVocabItems(otherUserId, ["水 (shuǐ) - water"]);
+
+    const ownResponse = await charactersList(
+      jsonRequest("http://localhost/api/characters", "GET")
+    );
+    const ownData = await ownResponse.json();
+    const otherCards = await listCharacterCards(otherUserId);
+
+    expect(ownResponse.status).toBe(200);
+    expect(ownData.cards).toEqual([
+      expect.objectContaining({ hanzi: "茶", pinyin: "chá", english: "tea" })
+    ]);
+    expect(ownData.cards).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ hanzi: "水" })])
+    );
+    expect(otherCards).toEqual([
+      expect.objectContaining({ hanzi: "水", pinyin: "shuǐ", english: "water" })
+    ]);
+  });
+
+  it("returns an empty character collection for a learner with no studied items", async () => {
+    const response = await charactersList(
+      jsonRequest("http://localhost/api/characters", "GET")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ cards: [] });
   });
 
   it("reports all-time totals, weekly totals, and a consecutive streak separately", async () => {

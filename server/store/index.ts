@@ -1,4 +1,5 @@
 import { isSupabaseStoreEnabled } from "@/lib/env";
+import { buildCharacterCards } from "@/lib/character-cards";
 import type { TonePracticeAttempt } from "@/lib/tone-practice";
 import type { AgentRun, MemoryItem, MessageRecord, Profile, SessionRecord, SrsGrade } from "@/lib/types";
 import type { LearningEventInput } from "@/lib/learning-events";
@@ -115,6 +116,14 @@ export async function addVocabItems(userId: string, items: string[], sourceSessi
 
 export async function listVocabItems(userId: string) {
   return shouldUseSupabaseStore() ? supabase.listVocabItems(userId) : inMemory.listVocabItems(userId);
+}
+
+export async function listCharacterCards(userId: string) {
+  const [vocabItems, cards] = await Promise.all([
+    listVocabItems(userId),
+    getAllCards(userId)
+  ]);
+  return buildCharacterCards(vocabItems, cards);
 }
 
 export async function getDueCards(userId: string, limit = 10) {
