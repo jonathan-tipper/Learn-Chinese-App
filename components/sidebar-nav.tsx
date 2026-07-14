@@ -6,23 +6,26 @@ import {
   Home,
   MessageCircle,
   BookOpen,
+  Languages,
   Headphones,
   BarChart2,
   Brain,
   Settings,
   LogIn
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { AuthControls } from "@/components/auth-controls";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: Array<{ href: string; label: string; mobileLabel?: string; icon: LucideIcon }> = [
   { href: "/", label: "Home", icon: Home },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/review", label: "Review", icon: BookOpen },
+  { href: "/characters", label: "Characters", mobileLabel: "Hanzi", icon: Languages },
   { href: "/tone-practice", label: "Tones", icon: Headphones },
-  { href: "/progress", label: "Progress", icon: BarChart2 },
-  { href: "/memory", label: "Memory", icon: Brain }
+  { href: "/progress", label: "Progress", mobileLabel: "Stats", icon: BarChart2 },
+  { href: "/memory", label: "Memory", mobileLabel: "Saved", icon: Brain }
 ] as const;
 
 const CHROME_HIDDEN_PATHS = new Set(["/login", "/offline"]);
@@ -50,8 +53,9 @@ function NavLink({
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
         collapsed && "justify-center px-2"
       )}
+      aria-current={active ? "page" : undefined}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {!collapsed && <span>{label}</span>}
     </Link>
   );
@@ -110,7 +114,7 @@ export function MobileNav() {
 
   return (
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-sidebar border-t border-sidebar-border safe-area-inset-bottom">
-      <div className="flex items-center justify-around px-2 py-2">
+      <div className="flex items-center justify-around px-1 py-2">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
@@ -119,11 +123,13 @@ export function MobileNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors min-w-0",
+                "flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors sm:text-xs",
                 active
                   ? "text-sidebar-accent-foreground"
                   : "text-sidebar-foreground/60 hover:text-sidebar-foreground"
               )}
+              aria-current={active ? "page" : undefined}
+              aria-label={item.label}
             >
               <Icon
                 className={cn(
@@ -131,7 +137,7 @@ export function MobileNav() {
                   active && "text-crimson"
                 )}
               />
-              <span className="truncate">{item.label}</span>
+              <span className="max-w-full truncate">{item.mobileLabel ?? item.label}</span>
             </Link>
           );
         })}

@@ -77,6 +77,19 @@ export interface VocabItem {
   createdAt: string;
 }
 
+export interface CharacterCard {
+  id: string;
+  hanzi: string;
+  pinyin?: string;
+  english?: string;
+  examples: string[];
+  learnedInSession: boolean;
+  radical?: string;
+  mnemonic?: string;
+  commonWords: string[];
+  sources: Array<"vocabulary" | "review">;
+}
+
 export interface AgentRun {
   id: string;
   userId: string;

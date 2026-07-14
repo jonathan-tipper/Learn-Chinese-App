@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { POST as chatPost } from "@/app/api/chat/route";
+import { GET as charactersList } from "@/app/api/characters/route";
 import { DELETE as memoryDelete } from "@/app/api/memory/delete/route";
 import { GET as memoryList } from "@/app/api/memory/list/route";
 import { GET as modelsGet } from "@/app/api/models/route";
@@ -116,6 +117,11 @@ describe("auth and RLS regression coverage", () => {
         name: "memory list",
         handler: memoryList,
         request: new Request("http://localhost/api/memory/list", { method: "GET" })
+      },
+      {
+        name: "character cards",
+        handler: charactersList,
+        request: new Request("http://localhost/api/characters", { method: "GET" })
       },
       {
         name: "memory delete",

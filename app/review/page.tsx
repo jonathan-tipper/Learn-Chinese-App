@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
+  ExternalLink,
   Headphones,
   Loader2,
   Mic,
@@ -529,6 +530,16 @@ export default function ReviewPage() {
                         Hint: {card.hints[0]}
                       </p>
                     )}
+                    <Link
+                      href={`/characters?hanzi=${encodeURIComponent(displayPrompt)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-jade underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label={`Open the character card for ${displayPrompt} in a new tab`}
+                    >
+                      Open character card
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
                   </div>
 
                   {/* Reveal */}
