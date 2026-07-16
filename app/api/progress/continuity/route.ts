@@ -1,9 +1,9 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok } from "@/lib/http";
+import { errorResponse, ok, withRequestContext } from "@/lib/http";
 import { deriveWeakTonePairRollups, formatToneFocusLabel } from "@/lib/tone-practice";
 import { getLastCompletedSession, listSessionsByUser } from "@/server/store";
 
-export async function GET(request: Request) {
+async function getContinuityHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const [lastSession, sessions] = await Promise.all([
@@ -40,3 +40,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(getContinuityHandler);

@@ -1,7 +1,7 @@
 import webpush from "web-push";
 import { z } from "zod";
 import { env, isPushEnabled } from "@/lib/env";
-import { badRequest, errorResponse, ok, parseBody, unauthorized } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody, unauthorized, withRequestContext } from "@/lib/http";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 
 const sendSchema = z.object({
@@ -22,7 +22,7 @@ const sendSchema = z.object({
  * Body: { userId, title, body, url?, icon?, badge? }
  * Auth: Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
  */
-export async function POST(request: Request) {
+async function sendPushNotificationHandler(request: Request) {
   try {
     // Require service-role key — this endpoint is not for end-user calls
     const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -98,3 +98,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(sendPushNotificationHandler);

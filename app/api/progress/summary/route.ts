@@ -1,8 +1,8 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok } from "@/lib/http";
+import { errorResponse, ok, withRequestContext } from "@/lib/http";
 import { computeProgressSummary } from "@/server/store";
 
-export async function GET(request: Request) {
+async function getProgressSummaryHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     return ok({ summary: await computeProgressSummary(userId) });
@@ -10,3 +10,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(getProgressSummaryHandler);

@@ -1,9 +1,9 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody, withRequestContext } from "@/lib/http";
 import { srsGradeSchema } from "@/lib/schemas";
 import { gradeCard } from "@/server/store";
 
-export async function POST(request: Request) {
+async function gradeSrsCardHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, srsGradeSchema);
@@ -17,3 +17,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(gradeSrsCardHandler);

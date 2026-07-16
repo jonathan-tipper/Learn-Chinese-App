@@ -1,5 +1,5 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok } from "@/lib/http";
+import { errorResponse, ok, withRequestContext } from "@/lib/http";
 import { env, isVeniceEnabled } from "@/lib/env";
 import { computeProgressSummary, listSessionsByUser } from "@/server/store";
 
@@ -67,7 +67,7 @@ function generateStaticRecap(input: {
   return `Great work this week! You completed ${input.totalSessions} session${input.totalSessions !== 1 ? "s" : ""} totaling ${minuteStr} of Mandarin practice, and you're building a vocabulary of ${input.vocabLearning} words. Keep up the momentum — 加油 (jiā yóu)!`;
 }
 
-export async function GET(request: Request) {
+async function getWeeklyRecapHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const [summary, sessions] = await Promise.all([
@@ -116,3 +116,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(getWeeklyRecapHandler);

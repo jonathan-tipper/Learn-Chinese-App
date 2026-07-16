@@ -1,9 +1,9 @@
 import { getUserIdFromRequest } from "@/lib/auth";
 import { env, isVeniceEnabled } from "@/lib/env";
-import { errorResponse, ok, parseBody } from "@/lib/http";
+import { errorResponse, ok, parseBody, withRequestContext } from "@/lib/http";
 import { ttsSchema } from "@/lib/schemas";
 
-export async function POST(request: Request) {
+async function synthesizeSpeechHandler(request: Request) {
   try {
     await getUserIdFromRequest(request);
     const body = await parseBody(request, ttsSchema);
@@ -108,3 +108,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(synthesizeSpeechHandler);

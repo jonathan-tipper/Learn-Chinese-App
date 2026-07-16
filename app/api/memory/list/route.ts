@@ -1,8 +1,8 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok } from "@/lib/http";
+import { errorResponse, ok, withRequestContext } from "@/lib/http";
 import { listMemories } from "@/server/store";
 
-export async function GET(request: Request) {
+async function listMemoriesHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     return ok({ memories: await listMemories(userId) });
@@ -10,3 +10,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(listMemoriesHandler);

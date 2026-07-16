@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { errorResponse, ok, parseBody } from "@/lib/http";
+import { errorResponse, ok, parseBody, withRequestContext } from "@/lib/http";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 
 const subscribeSchema = z.object({
@@ -17,7 +17,7 @@ const unsubscribeSchema = z.object({
 });
 
 // POST /api/push/subscribe — save (or refresh) a push subscription for the authenticated user
-export async function POST(request: Request) {
+async function subscribeToPushHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, subscribeSchema);
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 }
 
 // DELETE /api/push/subscribe — remove a subscription (user unsubscribed)
-export async function DELETE(request: Request) {
+async function unsubscribeFromPushHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, unsubscribeSchema);
@@ -63,3 +63,6 @@ export async function DELETE(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(subscribeToPushHandler);
+export const DELETE = withRequestContext(unsubscribeFromPushHandler);

@@ -1,6 +1,6 @@
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isVeniceEnabled } from "@/lib/env";
-import { errorResponse, notFound, parseBody } from "@/lib/http";
+import { errorResponse, notFound, parseBody, withRequestContext } from "@/lib/http";
 import { chatSchema } from "@/lib/schemas";
 import type { TutorStructuredResponse } from "@/lib/types";
 import {
@@ -87,7 +87,7 @@ function streamFinal(answer: string) {
   );
 }
 
-export async function POST(request: Request) {
+async function chatHandler(request: Request) {
   try {
     const body = await parseBody(request, chatSchema);
     const userId = await getUserIdFromRequest(request);
@@ -189,3 +189,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(chatHandler);

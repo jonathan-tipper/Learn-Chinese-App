@@ -1,8 +1,8 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok } from "@/lib/http";
+import { errorResponse, ok, withRequestContext } from "@/lib/http";
 import { getProfile } from "@/server/store";
 
-export async function GET(request: Request) {
+async function getProfileHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const profile = await getProfile(userId);
@@ -11,3 +11,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(getProfileHandler);
