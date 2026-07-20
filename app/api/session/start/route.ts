@@ -1,10 +1,10 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok, parseBody } from "@/lib/http";
+import { errorResponse, ok, parseBody, withRequestContext } from "@/lib/http";
 import { sessionStartSchema } from "@/lib/schemas";
 import { generatePlanSnippet } from "@/server/agents/curriculumPlanner";
 import { createSession } from "@/server/store";
 
-export async function POST(request: Request) {
+async function startSessionHandler(request: Request) {
   try {
     const body = await parseBody(request, sessionStartSchema);
     const userId = await getUserIdFromRequest(request);
@@ -22,3 +22,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(startSessionHandler);

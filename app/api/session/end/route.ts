@@ -1,9 +1,9 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody, withRequestContext } from "@/lib/http";
 import { sessionEndSchema } from "@/lib/schemas";
 import { endSession } from "@/server/store";
 
-export async function POST(request: Request) {
+async function endSessionHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, sessionEndSchema);
@@ -17,3 +17,5 @@ export async function POST(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const POST = withRequestContext(endSessionHandler);

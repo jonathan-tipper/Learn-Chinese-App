@@ -1,6 +1,6 @@
 import { getUserIdFromRequest } from "@/lib/auth";
 import { env, isVeniceEnabled } from "@/lib/env";
-import { badRequest, errorResponse, ok } from "@/lib/http";
+import { badRequest, errorResponse, ok, withRequestContext } from "@/lib/http";
 import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
 
 type VeniceModel = {
@@ -11,7 +11,7 @@ type VeniceModelsResponse = {
   data?: VeniceModel[];
 };
 
-export async function GET(request: Request) {
+async function listModelsHandler(request: Request) {
   try {
     await getUserIdFromRequest(request);
 
@@ -49,3 +49,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(listModelsHandler);

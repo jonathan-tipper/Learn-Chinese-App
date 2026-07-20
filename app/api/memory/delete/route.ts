@@ -1,9 +1,9 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { badRequest, errorResponse, ok, parseBody } from "@/lib/http";
+import { badRequest, errorResponse, ok, parseBody, withRequestContext } from "@/lib/http";
 import { memoryDeleteSchema } from "@/lib/schemas";
 import { deleteMemory } from "@/server/store";
 
-export async function DELETE(request: Request) {
+async function deleteMemoryHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const body = await parseBody(request, memoryDeleteSchema);
@@ -16,3 +16,5 @@ export async function DELETE(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const DELETE = withRequestContext(deleteMemoryHandler);

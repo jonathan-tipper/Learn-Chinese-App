@@ -1,8 +1,8 @@
 import { getUserIdFromRequest } from "@/lib/auth";
-import { errorResponse, ok } from "@/lib/http";
+import { errorResponse, ok, withRequestContext } from "@/lib/http";
 import { getDueCards } from "@/server/store";
 
-export async function GET(request: Request) {
+async function getNextSrsCardsHandler(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     const { searchParams } = new URL(request.url);
@@ -14,3 +14,5 @@ export async function GET(request: Request) {
     return errorResponse(error);
   }
 }
+
+export const GET = withRequestContext(getNextSrsCardsHandler);
