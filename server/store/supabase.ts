@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import type {
   AgentRun,
+  GrammarPoint,
+  GrammarPointSignal,
   MemoryItem,
   MessageRecord,
   Profile,
@@ -10,6 +12,7 @@ import type {
   SrsGrade,
   VocabItem
 } from "@/lib/types";
+import { grammarPointIdentity } from "@/lib/grammar-points";
 import { buildLearningEvent, type LearningEventInput } from "@/lib/learning-events";
 import {
   deriveWeakTonePairRollups,
@@ -93,6 +96,15 @@ type VocabRow = {
   english: string | null;
   tags: unknown;
   source_session_id: string | null;
+  created_at: string;
+};
+
+type GrammarPointRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  explanation: string;
+  examples_json: unknown;
   created_at: string;
 };
 
@@ -183,6 +195,17 @@ function mapVocabItem(row: VocabRow): VocabItem {
     english: row.english ?? undefined,
     tags: asStringArray(row.tags),
     sourceSessionId: row.source_session_id ?? undefined,
+    createdAt: row.created_at
+  };
+}
+
+function mapGrammarPoint(row: GrammarPointRow): GrammarPoint {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    explanation: row.explanation,
+    examples: asStringArray(row.examples_json),
     createdAt: row.created_at
   };
 }
@@ -626,6 +649,78 @@ export async function listVocabItems(userId: string) {
 
   if (error) throw error;
   return (data ?? []).map(mapVocabItem);
+}
+
+export async function addGrammarPoints(userId: string, signals: GrammarPointSignal[]) {
+  if (!signals.length) return [];
+
+  const client = getSupabaseServiceClient();
+  const existing = await listGrammarPoints(userId);
+  const upserted: GrammarPoint[] = [];
+  const seenInput = new Set<string>();
+
+  for (const signal of signals) {
+    const identity = grammarPointIdentity(signal.title);
+    if (seenInput.has(identity)) continue;
+    seenInput.add(identity);
+
+    const existingItem = existing.find((current) => grammarPointIdentity(current.title) === identity);
+    if (existingItem) {
+      const { data, error } = await client
+        .schema(env.supabaseDbSchema)
+        .from("grammar_points")
+        .update({ explanation: signal.explanation, examples_json: signal.examples })
+        .eq("id", existingItem.id)
+        .eq("user_id", userId)
+        .select("id, user_id, title, explanation, examples_json, created_at")
+        .maybeSingle<GrammarPointRow>();
+
+      if (error) throw error;
+      if (data) {
+        const mapped = mapGrammarPoint(data);
+        upserted.push(mapped);
+        const existingIndex = existing.findIndex((current) => current.id === mapped.id);
+        if (existingIndex >= 0) existing[existingIndex] = mapped;
+      }
+      continue;
+    }
+
+    const { data, error } = await client
+      .schema(env.supabaseDbSchema)
+      .from("grammar_points")
+      .insert({
+        id: randomUUID(),
+        user_id: userId,
+        title: signal.title,
+        explanation: signal.explanation,
+        examples_json: signal.examples
+      })
+      .select("id, user_id, title, explanation, examples_json, created_at")
+      .maybeSingle<GrammarPointRow>();
+
+    if (error) throw error;
+    if (data) {
+      const mapped = mapGrammarPoint(data);
+      existing.push(mapped);
+      upserted.push(mapped);
+    }
+  }
+
+  return upserted;
+}
+
+export async function listGrammarPoints(userId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("grammar_points")
+    .select("id, user_id, title, explanation, examples_json, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .returns<GrammarPointRow[]>();
+
+  if (error) throw error;
+  return (data ?? []).map(mapGrammarPoint);
 }
 
 export async function getDueCards(userId: string, limit = 10) {

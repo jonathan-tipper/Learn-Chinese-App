@@ -77,6 +77,22 @@ export interface VocabItem {
   createdAt: string;
 }
 
+export interface GrammarPointSignal {
+  title: string;
+  explanation: string;
+  examples: string[];
+  confidence: "high";
+}
+
+export interface GrammarPoint {
+  id: string;
+  userId: string;
+  title: string;
+  explanation: string;
+  examples: string[];
+  createdAt: string;
+}
+
 export interface AgentRun {
   id: string;
   userId: string;
@@ -94,5 +110,6 @@ export interface TutorStructuredResponse {
   examples: string[];
   microExercise: string;
   suggestedReviewItems: string[];
+  grammarPoints?: GrammarPointSignal[];
   answer: string;
 }

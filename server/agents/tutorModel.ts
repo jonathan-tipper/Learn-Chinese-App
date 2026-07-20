@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { env, isVeniceEnabled } from "@/lib/env";
+import { normalizeGrammarPointSignals } from "@/lib/grammar-points";
 import type { TutorStructuredResponse } from "@/lib/types";
 import {
   type ModelSelectionMode,
@@ -12,7 +13,13 @@ const structuredSchema = z.object({
   keyPoints: z.array(z.string()).min(1).max(4),
   examples: z.array(z.string()).min(1).max(6),
   microExercise: z.string().min(1),
-  suggestedReviewItems: z.array(z.string()).min(1).max(10)
+  suggestedReviewItems: z.array(z.string()).min(1).max(10),
+  grammarPoints: z.array(z.object({
+    title: z.string().min(1),
+    explanation: z.string().min(1),
+    examples: z.array(z.string()).max(4),
+    confidence: z.literal("high")
+  })).max(4).default([])
 });
 
 function firstNonEmptyString(candidates: unknown[], fallback: string) {
@@ -56,13 +63,15 @@ function normalizeStructuredPayload(raw: unknown) {
     "Write one sentence using the pattern above."
   );
   const suggestedReviewItems = boundedStringArray(payload.suggestedReviewItems, 10, keyPoints);
+  const grammarPoints = normalizeGrammarPointSignals(payload.grammarPoints);
 
   return {
     answer,
     keyPoints,
     examples,
     microExercise,
-    suggestedReviewItems
+    suggestedReviewItems,
+    grammarPoints
   };
 }
 
@@ -104,8 +113,9 @@ function buildPrompt(input: {
 
   lines.push(
     "Teach Mandarin in-context. Include concise hanzi + pinyin + English where useful.",
-    "Output JSON only with keys: answer, keyPoints, examples, microExercise, suggestedReviewItems.",
-    "Constraints: keyPoints max 4 items, examples max 6 items, suggestedReviewItems max 10 items.",
+    "Output JSON only with keys: answer, keyPoints, examples, microExercise, suggestedReviewItems, grammarPoints.",
+    "Constraints: keyPoints max 4 items, examples max 6 items, suggestedReviewItems max 10 items, grammarPoints max 4 items.",
+    "grammarPoints must be an array of { title, explanation, examples, confidence }. Include an item only for a grammar concept explicitly taught or corrected in this response, and only when confidence is 'high'; otherwise return an empty array. Do not infer or invent a rule.",
     "IMPORTANT: Each suggestedReviewItem MUST use this exact format: 'hanzi (pinyin) - English meaning'.",
     "Examples of correct suggestedReviewItems: '请 (qǐng) - please', '谢谢 (xiè xiè) - thank you', '咖啡 (kā fēi) - coffee'.",
     "Only include individual vocabulary words or short phrases in suggestedReviewItems — NOT full sentences, NOT grammar concepts, NOT English-only text."

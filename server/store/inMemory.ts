@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import type {
   AgentRun,
+  GrammarPoint,
+  GrammarPointSignal,
   MemoryItem,
   MessageRecord,
   Profile,
@@ -10,6 +12,7 @@ import type {
   TutorStructuredResponse,
   VocabItem
 } from "@/lib/types";
+import { grammarPointIdentity } from "@/lib/grammar-points";
 import { buildLearningEvent, type LearningEvent, type LearningEventInput } from "@/lib/learning-events";
 import {
   deriveWeakTonePairRollups,
@@ -34,6 +37,7 @@ const messages = new Map<string, MessageRecord[]>();
 const memories = new Map<string, MemoryItem[]>();
 const srsCards = new Map<string, SrsCard[]>();
 const vocabItems = new Map<string, VocabItem[]>();
+const grammarPoints = new Map<string, GrammarPoint[]>();
 const profiles = new Map<string, Profile>();
 const agentRuns: AgentRun[] = [];
 const learningEvents: LearningEvent[] = [];
@@ -44,6 +48,7 @@ export function resetInMemoryStore() {
   memories.clear();
   srsCards.clear();
   vocabItems.clear();
+  grammarPoints.clear();
   profiles.clear();
   agentRuns.length = 0;
   learningEvents.length = 0;
@@ -238,6 +243,48 @@ export function addVocabItems(userId: string, items: string[], sourceSessionId?:
 
 export function listVocabItems(userId: string) {
   return vocabItems.get(userId) ?? [];
+}
+
+export function addGrammarPoints(userId: string, signals: GrammarPointSignal[]) {
+  const list = grammarPoints.get(userId) ?? [];
+  const upserted: GrammarPoint[] = [];
+  const seenInput = new Set<string>();
+
+  for (const signal of signals) {
+    const identity = grammarPointIdentity(signal.title);
+    if (seenInput.has(identity)) continue;
+    seenInput.add(identity);
+
+    const existingIndex = list.findIndex((current) => grammarPointIdentity(current.title) === identity);
+    if (existingIndex >= 0) {
+      const updated = {
+        ...list[existingIndex],
+        explanation: signal.explanation,
+        examples: signal.examples
+      };
+      list[existingIndex] = updated;
+      upserted.push(updated);
+      continue;
+    }
+
+    const created: GrammarPoint = {
+      id: randomUUID(),
+      userId,
+      title: signal.title,
+      explanation: signal.explanation,
+      examples: signal.examples,
+      createdAt: now()
+    };
+    list.push(created);
+    upserted.push(created);
+  }
+
+  grammarPoints.set(userId, list);
+  return upserted;
+}
+
+export function listGrammarPoints(userId: string) {
+  return grammarPoints.get(userId) ?? [];
 }
 
 export function getDueCards(userId: string, limit = 10) {
