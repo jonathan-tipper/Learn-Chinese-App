@@ -529,6 +529,13 @@ export default function ReviewPage() {
                         Hint: {card.hints[0]}
                       </p>
                     )}
+                    <Link
+                      href={`/characters?entry=${encodeURIComponent(displayPrompt)}`}
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Explore character
+                      <ChevronRight className="h-3 w-3" />
+                    </Link>
                   </div>
 
                   {/* Reveal */}

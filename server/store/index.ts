@@ -1,7 +1,21 @@
 import { isSupabaseStoreEnabled } from "@/lib/env";
 import type { TonePracticeAttempt } from "@/lib/tone-practice";
-import type { AgentRun, GrammarPointSignal, MemoryItem, MessageRecord, Profile, SessionRecord, SrsGrade } from "@/lib/types";
+import type {
+  AgentRun,
+  CharacterCard,
+  GrammarPointSignal,
+  LearningPlan,
+  MemoryItem,
+  MessageRecord,
+  Profile,
+  SessionRecord,
+  SrsGrade,
+  StudiedEntry
+} from "@/lib/types";
 import type { LearningEventInput } from "@/lib/learning-events";
+import type { EndSessionOptions } from "@/server/store/contracts";
+import { isMissingRelationError, warnOnceMissingRelation } from "@/server/store/errors";
+import type { SrsCardContext } from "@/server/store/srs";
 import { synthesizeTutorResponse } from "@/server/store/inMemory";
 import * as inMemory from "@/server/store/inMemory";
 import * as supabase from "@/server/store/supabase";
@@ -38,10 +52,16 @@ export async function getSessionForUser(userId: string, sessionId: string) {
   return shouldUseSupabaseStore() ? supabase.getSessionForUser(userId, sessionId) : inMemory.getSessionForUser(userId, sessionId);
 }
 
-export async function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
+export async function endSession(
+  sessionId: string,
+  durationSec: number,
+  summary?: string,
+  userId?: string,
+  options: EndSessionOptions = {}
+) {
   const session = shouldUseSupabaseStore()
-    ? supabase.endSession(sessionId, durationSec, summary, userId)
-    : inMemory.endSession(sessionId, durationSec, summary, userId);
+    ? supabase.endSession(sessionId, durationSec, summary, userId, options)
+    : inMemory.endSession(sessionId, durationSec, summary, userId, options);
   const resolved = await session;
   if (resolved) {
     await recordLearningEvent({
@@ -67,6 +87,10 @@ export async function recordTonePracticeAttempts(
 
 export async function listSessionsByUser(userId: string) {
   return shouldUseSupabaseStore() ? supabase.listSessionsByUser(userId) : inMemory.listSessionsByUser(userId);
+}
+
+export async function listOpenSessions(userId: string) {
+  return shouldUseSupabaseStore() ? supabase.listOpenSessions(userId) : inMemory.listOpenSessions(userId);
 }
 
 export async function getLastCompletedSession(userId: string) {
@@ -99,8 +123,10 @@ export async function deleteMemory(userId: string, memoryId: string) {
   return shouldUseSupabaseStore() ? supabase.deleteMemory(userId, memoryId) : inMemory.deleteMemory(userId, memoryId);
 }
 
-export async function addSrsCards(userId: string, items: string[]) {
-  return shouldUseSupabaseStore() ? supabase.addSrsCards(userId, items) : inMemory.addSrsCards(userId, items);
+export async function addSrsCards(userId: string, items: string[], context: SrsCardContext = {}) {
+  return shouldUseSupabaseStore()
+    ? supabase.addSrsCards(userId, items, context)
+    : inMemory.addSrsCards(userId, items, context);
 }
 
 export async function getAllCards(userId: string) {
@@ -142,9 +168,19 @@ export async function gradeCard(userId: string, cardId: string, grade: SrsGrade)
 }
 
 export async function recordLearningEvent(input: LearningEventInput) {
-  return shouldUseSupabaseStore()
-    ? supabase.recordLearningEvent(input)
-    : inMemory.recordLearningEvent(input);
+  try {
+    return shouldUseSupabaseStore()
+      ? await supabase.recordLearningEvent(input)
+      : inMemory.recordLearningEvent(input);
+  } catch (error) {
+    // Analytics must never break the learning loop (for example when the migration lags).
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("learning_events", error);
+      return null;
+    }
+    console.warn("Failed to record learning event", error);
+    return null;
+  }
 }
 
 export async function listLearningEvents(userId: string) {
@@ -154,13 +190,90 @@ export async function listLearningEvents(userId: string) {
 }
 
 export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
-  return shouldUseSupabaseStore() ? supabase.logAgentRun(run) : inMemory.logAgentRun(run);
+  try {
+    return shouldUseSupabaseStore() ? await supabase.logAgentRun(run) : inMemory.logAgentRun(run);
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("agent_runs usage columns", error);
+      return;
+    }
+    console.warn("Failed to log agent run", error);
+  }
 }
 
 export async function getSessionAgentUsage(userId: string, sessionId: string) {
-  return shouldUseSupabaseStore()
-    ? supabase.getSessionAgentUsage(userId, sessionId)
-    : inMemory.getSessionAgentUsage(userId, sessionId);
+  try {
+    return shouldUseSupabaseStore()
+      ? await supabase.getSessionAgentUsage(userId, sessionId)
+      : inMemory.getSessionAgentUsage(userId, sessionId);
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("agent_runs usage columns", error);
+      return { tokens: 0, costEstimate: 0 };
+    }
+    throw error;
+  }
+}
+
+export async function saveLearningPlan(plan: LearningPlan) {
+  return shouldUseSupabaseStore() ? supabase.saveLearningPlan(plan) : inMemory.saveLearningPlan(plan);
+}
+
+export async function getLatestLearningPlan(userId: string) {
+  return shouldUseSupabaseStore() ? supabase.getLatestLearningPlan(userId) : inMemory.getLatestLearningPlan(userId);
+}
+
+export async function updateLearningPlan(plan: LearningPlan) {
+  return shouldUseSupabaseStore() ? supabase.updateLearningPlan(plan) : inMemory.updateLearningPlan(plan);
+}
+
+export async function getCachedCharacterCard(entry: string) {
+  return shouldUseSupabaseStore() ? supabase.getCachedCharacterCard(entry) : inMemory.getCachedCharacterCard(entry);
+}
+
+export async function saveCharacterCard(card: CharacterCard) {
+  return shouldUseSupabaseStore() ? supabase.saveCharacterCard(card) : inMemory.saveCharacterCard(card);
+}
+
+/** Everything the learner has met, merged from vocabulary items and review cards. */
+export async function listStudiedEntries(userId: string): Promise<StudiedEntry[]> {
+  const [vocab, cards] = await Promise.all([listVocabItems(userId), getAllCards(userId)]);
+  const byEntry = new Map<string, StudiedEntry>();
+
+  for (const card of cards) {
+    const entry = card.prompt.trim();
+    if (!entry) continue;
+    const [pinyin, english] = card.answer.includes(" — ")
+      ? card.answer.split(" — ", 2)
+      : [undefined, card.answer];
+    byEntry.set(entry, {
+      entry,
+      pinyin: pinyin?.trim() || undefined,
+      english: english?.trim() || undefined,
+      source: "srs",
+      lastResult: card.lastResult,
+      ease: card.ease,
+      nextDueAt: card.nextDueAt
+    });
+  }
+
+  for (const item of vocab) {
+    const entry = item.hanzi.trim();
+    if (!entry) continue;
+    const existing = byEntry.get(entry);
+    byEntry.set(entry, {
+      entry,
+      pinyin: item.pinyin ?? existing?.pinyin,
+      english: item.english ?? existing?.english,
+      source: existing?.source ?? "vocab",
+      lastResult: existing?.lastResult,
+      ease: existing?.ease,
+      nextDueAt: existing?.nextDueAt,
+      createdAt: item.createdAt
+    });
+  }
+
+  return Array.from(byEntry.values()).sort((a, b) => a.entry.localeCompare(b.entry, "zh"));
 }
 
 export async function computeProgressSummary(userId: string) {

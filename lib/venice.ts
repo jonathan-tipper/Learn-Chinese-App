@@ -1,11 +1,17 @@
 export const DEFAULT_SIMPLE_MODEL = "zai-org-glm-4.7";
 export const DEFAULT_COMPLEX_MODEL = "zai-org-glm-5";
 
+/**
+ * Curated options surfaced in the UI. Measured on Venice in Sept 2026 for a ~600 token
+ * structured tutor reply with thinking disabled: qwen3-235b instruct ≈14s and the cheapest
+ * with reliable JSON; glm-4.7 ≈14s; glm-5 ≈22s but the strongest explanations.
+ */
 export const VENICE_MODEL_OPTIONS = [
   DEFAULT_SIMPLE_MODEL,
   DEFAULT_COMPLEX_MODEL,
-  "qwen-2.5-72b-instruct",
-  "meta-llama/llama-3.3-70b-instruct"
+  "qwen3-235b-a22b-instruct-2507",
+  "google-gemma-4-31b-it",
+  "claude-sonnet-5"
 ] as const;
 
 export type ActivityComplexity = "simple" | "complex";

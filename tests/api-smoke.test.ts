@@ -243,7 +243,7 @@ describe("API smoke", () => {
     expect(await listLearningEvents(userId)).toEqual([
       expect.objectContaining({ name: "session_started", sessionId }),
       expect.objectContaining({ name: "review_completed" }),
-      expect.objectContaining({ name: "session_ended", sessionId, metadata: { durationSec: 180 } })
+      expect.objectContaining({ name: "session_ended", sessionId, metadata: { durationSec: expect.any(Number) } })
     ]);
   });
 

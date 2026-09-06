@@ -1,20 +1,18 @@
+import { randomUUID } from "crypto";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { isVeniceEnabled } from "@/lib/env";
 import { errorResponse, notFound, parseBody, withRequestContext } from "@/lib/http";
 import { chatSchema } from "@/lib/schemas";
 import type { TutorStructuredResponse } from "@/lib/types";
 import {
-  estimateCostUsd,
   estimateTokens,
   evaluateSessionBudget,
   parseSessionBudgetConfig
 } from "@/lib/session-budget";
 import { runTutorGraph } from "@/server/agents/graph";
+import { registerStreamSink, releaseStreamSink } from "@/server/agents/streamSink";
 import {
   addMemory,
-  addGrammarPoints,
-  addSrsCards,
-  addVocabItems,
   appendMessage,
   deleteMemory,
   getSessionForUser,
@@ -40,53 +38,33 @@ function parseMemoryCommand(message: string) {
   return null;
 }
 
-function formatIntent(answer: string, intent?: string) {
-  if (intent === "more_examples") {
-    return `${answer}\n\nMore examples:\n- 我今天想练习中文。\n- 我可以先点一杯茶吗？\n- 我在学习更自然的表达。`;
-  }
-
-  if (intent === "quiz_me") {
-    return `${answer}\n\nQuick quiz: Translate “I’d like to order tea today.”`;
-  }
-
-  return answer;
+function sseEvent(payload: Record<string, unknown>) {
+  return sseEncoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function deriveReviewItems(structured: TutorStructuredResponse, userMessage: string, saveToReview?: boolean) {
-  // Only use suggestedReviewItems — the LLM formats these as "hanzi (pinyin) - English".
-  // examples/keyPoints/microExercise are teaching aids, not SRS vocab flashcards.
-  const candidates = [...structured.suggestedReviewItems];
-
-  if (saveToReview) {
-    candidates.push(userMessage);
-  }
-
-  return Array.from(new Set(candidates.map((v) => v.trim()).filter(Boolean))).slice(0, 20);
-}
-
-function chunkText(content: string, chunkSize = 90) {
-  const chunks: string[] = [];
-  for (let i = 0; i < content.length; i += chunkSize) {
-    chunks.push(content.slice(i, i + chunkSize));
-  }
-  return chunks;
+function emptyStructured(answer: string): TutorStructuredResponse {
+  return { answer, keyPoints: [], examples: [], microExercise: "", suggestedReviewItems: [] };
 }
 
 function streamFinal(answer: string) {
   return new Response(
     new ReadableStream({
       start(controller) {
-        controller.enqueue(
-          sseEncoder.encode(
-            `data: ${JSON.stringify({ type: "final", structured: { answer, keyPoints: [], examples: [], microExercise: "", suggestedReviewItems: [] } })}\n\n`
-          )
-        );
+        controller.enqueue(sseEvent({ type: "delta", content: answer }));
+        controller.enqueue(sseEvent({ type: "final", structured: emptyStructured(answer) }));
         controller.close();
       }
     }),
     { headers: { "Content-Type": "text/event-stream" } }
   );
 }
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  "X-Accel-Buffering": "no"
+};
 
 async function chatHandler(request: Request) {
   try {
@@ -95,6 +73,9 @@ async function chatHandler(request: Request) {
     const session = await getSessionForUser(userId, body.sessionId);
     if (!session) {
       return notFound("Session not found");
+    }
+    if (session.endedAt) {
+      return Response.json({ error: "This session has ended. Start a new session to continue.", code: "SESSION_ENDED" }, { status: 409 });
     }
 
     await appendMessage(body.sessionId, "user", body.message);
@@ -130,67 +111,93 @@ async function chatHandler(request: Request) {
       }, { status: 429 });
     }
 
+    const runId = randomUUID();
     const started = Date.now();
-    const graph = await runTutorGraph({
-      userId,
-      sessionId: body.sessionId,
-      message: body.message,
-      intent: body.intent,
-      verifyMode: body.verifyMode,
-      modelSelectionMode: body.modelSelectionMode,
-      customModel: body.customModel,
-      planSnippet: body.planSnippet
-    });
-
-    let answer = formatIntent(graph.structured.answer, body.intent);
-    if (body.verifyMode) {
-      answer += "\n\nVerification note: I may be wrong on edge-case grammar—cross-check if this is high-stakes.";
-    }
-
-    const reviewItems = deriveReviewItems(graph.structured, body.message, body.saveToReview);
-    const actualTokens = estimateTokens(`${body.message}\n${answer}`, 0);
-    const finalBudget = evaluateSessionBudget(budgetConfig, usage.tokens, actualTokens);
-
-    await appendMessage(body.sessionId, "assistant", answer);
-    const cards = await addSrsCards(userId, reviewItems);
-    await addVocabItems(userId, reviewItems, body.sessionId);
-    try {
-      await addGrammarPoints(userId, graph.structured.grammarPoints ?? []);
-    } catch (error) {
-      console.error("Failed to persist grammar points", error);
-    }
-
-    await logAgentRun({
-      userId,
-      sessionId: body.sessionId,
-      nodeName: "TutorResponse",
-      provider: isVeniceEnabled() ? "venice" : "local-fallback",
-      tokens: actualTokens,
-      latencyMs: Date.now() - started,
-      costEstimate: estimateCostUsd(actualTokens, budgetConfig)
-    });
 
     const stream = new ReadableStream({
       start(controller) {
-        for (const chunk of chunkText(answer)) {
-          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ type: "delta", content: chunk })}\n\n`));
-        }
-        controller.enqueue(
-          sseEncoder.encode(
-            `data: ${JSON.stringify({ type: "final", structured: { ...graph.structured, answer }, nodesExecuted: graph.nodesExecuted, createdReviewCards: cards.length, budget: finalBudget })}\n\n`
-          )
-        );
-        controller.close();
+        let closed = false;
+        const safeEnqueue = (payload: Record<string, unknown>) => {
+          if (closed) return;
+          try {
+            controller.enqueue(sseEvent(payload));
+          } catch {
+            closed = true;
+          }
+        };
+
+        registerStreamSink(runId, {
+          onDelta: (content) => safeEnqueue({ type: "delta", content }),
+          onStructured: (structured) => safeEnqueue({ type: "structured", structured })
+        });
+
+        void (async () => {
+          try {
+            const graph = await runTutorGraph({
+              userId,
+              sessionId: body.sessionId,
+              runId,
+              message: body.message,
+              intent: body.intent,
+              verifyMode: body.verifyMode,
+              modelSelectionMode: body.modelSelectionMode,
+              customModel: body.customModel,
+              planSnippet: body.planSnippet,
+              saveToReview: body.saveToReview
+            });
+
+            const answer = graph.structured.answer;
+            await appendMessage(body.sessionId, "assistant", answer);
+
+            const tokensUsed = graph.agentRuns.reduce((total, run) => total + run.tokens, 0)
+              || estimateTokens(`${body.message}\n${answer}`, 0);
+            const finalBudget = evaluateSessionBudget(budgetConfig, usage.tokens, tokensUsed);
+
+            for (const run of graph.agentRuns) {
+              await logAgentRun({
+                userId,
+                sessionId: body.sessionId,
+                nodeName: run.nodeName,
+                provider: run.model ? `venice:${run.model}` : isVeniceEnabled() ? "venice" : "local-fallback",
+                tokens: run.tokens,
+                latencyMs: run.latencyMs,
+                costEstimate: run.costUsd
+              });
+            }
+
+            safeEnqueue({
+              type: "final",
+              structured: graph.structured,
+              nodesExecuted: graph.nodesExecuted,
+              createdReviewCards: graph.createdReviewCards,
+              memoriesSaved: graph.memoriesSaved.map((memory) => ({ key: memory.key, value: memory.value, type: memory.type })),
+              model: graph.model,
+              latencyMs: Date.now() - started,
+              budget: finalBudget
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "The coach could not answer right now.";
+            console.error("Chat generation failed", error);
+            safeEnqueue({ type: "error", error: message });
+          } finally {
+            releaseStreamSink(runId);
+            if (!closed) {
+              closed = true;
+              try {
+                controller.close();
+              } catch {
+                // already closed by the client
+              }
+            }
+          }
+        })();
+      },
+      cancel() {
+        releaseStreamSink(runId);
       }
     });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive"
-      }
-    });
+    return new Response(stream, { headers: SSE_HEADERS });
   } catch (error) {
     return errorResponse(error);
   }

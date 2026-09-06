@@ -97,3 +97,58 @@ export function computeScheduling(currentInterval: number, currentEase: number, 
     nextDueAt
   };
 }
+
+export interface SrsCardContext {
+  /** Example sentences from the tutor reply, used to build answer-safe cloze hints. */
+  examples?: string[];
+  /** Extra tags such as the reply topic; "auto-generated" is always added. */
+  tags?: string[];
+}
+
+const DEFAULT_HINT = "Recall context from your last session";
+const CLOZE_MARK = "＿＿";
+
+/** Return only the Chinese sentence portion of an example like "我想点一杯茶。 (I want tea.)". */
+export function chineseSentenceFromExample(example: string) {
+  const cut = example.split(/[(（—–-]|\s[-]\s/)[0]?.trim() ?? "";
+  if (!CJK_RE.test(cut)) return "";
+  // Drop trailing latin/pinyin fragments that survived the split.
+  return cut.replace(/[A-Za-zāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ0-9,.!?;:'"\s]+$/u, "").trim();
+}
+
+/**
+ * Build hints that help recall without revealing the answer: a cloze of the sentence the
+ * word appeared in, falling back to the topic it came up under.
+ */
+export function buildAnswerSafeHints(chinese: string, context: SrsCardContext = {}) {
+  const term = chinese.trim();
+  const hints: string[] = [];
+
+  for (const example of context.examples ?? []) {
+    const sentence = chineseSentenceFromExample(example);
+    if (!sentence || !sentence.includes(term) || sentence.replace(term, "").length < 2) continue;
+    hints.push(`Fill the gap: ${sentence.split(term).join(CLOZE_MARK)}`);
+    break;
+  }
+
+  const topic = (context.tags ?? []).find((tag) => tag && tag !== "auto-generated");
+  if (topic) {
+    hints.push(`Came up while practising: ${topic}`);
+  }
+
+  return hints.length ? hints.slice(0, 2) : [DEFAULT_HINT];
+}
+
+export function buildCardTags(context: SrsCardContext = {}) {
+  const tags = new Set<string>(["auto-generated"]);
+  for (const tag of context.tags ?? []) {
+    const cleaned = tag.trim().toLowerCase().slice(0, 40);
+    if (cleaned) tags.add(cleaned);
+  }
+  return Array.from(tags);
+}
+
+/** A card counts as mastered once it is comfortably scheduled weeks out. */
+export function isMasteredCard(card: { ease: number; interval: number }) {
+  return card.ease >= 3.0 && card.interval >= 21;
+}

@@ -1,79 +1,99 @@
-import type { TutorStructuredResponse } from "@/lib/types";
-import { runTutorGraphWithLangGraph } from "@/server/agents/langgraphRuntime";
-import { generateTutorStructuredResponse } from "@/server/agents/tutorModel";
-import { getProfile, listMemories, listSessionMessagesForUser } from "@/server/store";
 import type { ModelSelectionMode } from "@/lib/venice";
+import {
+  type AgentRunSummary,
+  type LangGraphOutput,
+  type TutorStateType,
+  loadTutorContext,
+  resolvePlanFocus,
+  runLearningPersistNode,
+  runMemoryCuratorNode,
+  runTutorGraphWithLangGraph,
+  runTutorResponseNode
+} from "@/server/agents/langgraphRuntime";
 
 export interface GraphInput {
   userId: string;
   sessionId: string;
+  runId: string;
   message: string;
   intent?: string;
   verifyMode?: boolean;
   modelSelectionMode?: ModelSelectionMode;
   customModel?: string;
   planSnippet?: string;
+  saveToReview?: boolean;
 }
 
-export interface GraphOutput {
-  structured: TutorStructuredResponse;
-  memoryContext: string[];
-  nodesExecuted: string[];
-}
+export type GraphOutput = LangGraphOutput;
+export type { AgentRunSummary };
 
+/**
+ * Same node sequence as the LangGraph app, without a checkpointer. Used when the
+ * LangGraph runtime itself fails (never for model errors, which should surface).
+ */
 async function runFallbackGraph(input: GraphInput): Promise<GraphOutput> {
-  const nodesExecuted: string[] = [];
+  const context = await loadTutorContext(input);
+  const planFocus = await resolvePlanFocus(input);
 
-  nodesExecuted.push("ContextLoader");
-  const [profile, memories, sessionMessages] = await Promise.all([
-    getProfile(input.userId),
-    listMemories(input.userId),
-    listSessionMessagesForUser(input.userId, input.sessionId)
-  ]);
-  const memoryContext = memories.slice(0, 5).map((m) => `${m.key}: ${m.value}`);
-  const recentUserMessages = sessionMessages
-    .filter((m) => m.role === "user")
-    .slice(-3)
-    .map((m) => m.content);
-
-  nodesExecuted.push("MemoryRetrieve");
-  nodesExecuted.push("Planner");
-  const profileSummary = profile
-    ? `level=${profile.level}; goals=${profile.goals.join(", ")}; interests=${profile.interests.join(", ")}; minutesPerDay=${profile.minutesPerDay}; coachStyle=${profile.coachStyle}`
-    : "No saved profile yet.";
-
-  nodesExecuted.push("TutorResponse");
-  const structured = await generateTutorStructuredResponse({
+  const baseState: TutorStateType = {
+    userId: input.userId,
+    sessionId: input.sessionId,
+    runId: input.runId,
     message: input.message,
     intent: input.intent,
-    memoryContext,
-    profileSummary,
-    recentUserMessages,
     verifyMode: input.verifyMode,
     modelSelectionMode: input.modelSelectionMode,
     customModel: input.customModel,
     planSnippet: input.planSnippet,
-    modelPreferences: profile
-      ? {
-        preferredSimpleModel: profile.preferredSimpleModel,
-        preferredComplexModel: profile.preferredComplexModel
-      }
-      : undefined
-  });
+    saveToReview: input.saveToReview,
+    ...context,
+    planFocus,
+    structured: undefined,
+    model: undefined,
+    createdReviewCards: 0,
+    memoriesSaved: [],
+    nodesExecuted: ["ContextLoader", "MemoryRetrieve", "Planner"],
+    agentRuns: [] as AgentRunSummary[]
+  };
 
-  nodesExecuted.push("SRSExtract");
-  nodesExecuted.push("MemoryWrite");
-  nodesExecuted.push("SafetyQualityGate");
-  nodesExecuted.push("PersistTelemetry");
+  const tutor = await runTutorResponseNode(baseState);
+  const withTutor: TutorStateType = { ...baseState, ...tutor };
 
-  return { structured, memoryContext, nodesExecuted };
+  const [persist, curated] = await Promise.all([
+    runLearningPersistNode(withTutor),
+    runMemoryCuratorNode(withTutor)
+  ]);
+
+  return {
+    structured: tutor.structured,
+    memoryContext: context.memoryContext,
+    nodesExecuted: [
+      ...baseState.nodesExecuted,
+      ...tutor.nodesExecuted,
+      ...persist.nodesExecuted,
+      ...curated.nodesExecuted,
+      "SafetyQualityGate",
+      "PersistTelemetry"
+    ],
+    createdReviewCards: persist.createdReviewCards,
+    memoriesSaved: curated.memoriesSaved,
+    agentRuns: [...tutor.agentRuns, ...persist.agentRuns, ...curated.agentRuns],
+    model: tutor.model
+  };
+}
+
+function isLangGraphInfrastructureError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /checkpoint|langgraph|graph|postgres|ECONNREFUSED|channel/i.test(message)
+    && !/venice|model|json/i.test(message);
 }
 
 export async function runTutorGraph(input: GraphInput): Promise<GraphOutput> {
   try {
     return await runTutorGraphWithLangGraph(input);
-  } catch {
-    // Keep v0.1 usable even if LangGraph dependencies or checkpointer are unavailable.
+  } catch (error) {
+    if (!isLangGraphInfrastructureError(error)) throw error;
+    console.warn("LangGraph runtime unavailable, using sequential fallback:", error instanceof Error ? error.message : error);
     return runFallbackGraph(input);
   }
 }

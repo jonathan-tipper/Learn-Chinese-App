@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { MessageCircle, BookOpen, ChevronRight, Flame, Clock, Sparkles, Headphones } from "lucide-react";
+import { MessageCircle, BookOpen, ChevronRight, Flame, Clock, Sparkles, Headphones, CalendarDays, Target, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { authedFetch } from "@/lib/authed-fetch";
+import type { LearningPlanItem } from "@/lib/types";
 
 const GREETINGS = [
   { zh: "早上好", pinyin: "Zǎoshang hǎo", en: "Good morning" },
@@ -33,6 +34,7 @@ export default function HomePage() {
   const [greetingIdx, setGreetingIdx] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
   const [continuity, setContinuity] = useState<Continuity>(undefined as unknown as Continuity);
+  const [todayPlan, setTodayPlan] = useState<LearningPlanItem | null | undefined>(undefined);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -70,6 +72,22 @@ export default function HomePage() {
     })();
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const response = await authedFetch("/api/plan");
+        if (!response.ok) {
+          setTodayPlan(null);
+          return;
+        }
+        const data = await response.json() as { today: LearningPlanItem | null };
+        setTodayPlan(data.today ?? null);
+      } catch {
+        setTodayPlan(null);
+      }
+    })();
+  }, []);
+
   const greeting = GREETINGS[greetingIdx];
   const continuityLoaded = continuity !== (undefined as unknown as Continuity);
 
@@ -92,6 +110,71 @@ export default function HomePage() {
           {greeting.en}. Ready to practice Mandarin today?
         </p>
       </div>
+
+      {/* Today's plan */}
+      <Card className="border-foreground/15">
+        <CardContent className="p-5">
+          {todayPlan === undefined ? (
+            <div className="animate-pulse space-y-2">
+              <div className="h-3 w-24 rounded bg-muted" />
+              <div className="h-5 w-64 rounded bg-muted" />
+              <div className="h-4 w-full rounded bg-muted" />
+            </div>
+          ) : todayPlan ? (
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2 min-w-0">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Today · Day {todayPlan.day} of your week
+                  </span>
+                  {todayPlan.status === "completed" && (
+                    <Badge variant="jade" className="gap-1 text-[10px]">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Done
+                    </Badge>
+                  )}
+                </div>
+                <h2 className="text-lg font-semibold leading-tight">{todayPlan.title}</h2>
+                <div className="flex items-start gap-2 text-sm">
+                  <Target className="h-4 w-4 mt-0.5 shrink-0 text-jade" />
+                  <span>{todayPlan.canDo}</span>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">{todayPlan.lessonFocus}</p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                <Button asChild size="sm">
+                  <Link href="/chat">
+                    <MessageCircle className="h-4 w-4" />
+                    {todayPlan.status === "completed" ? "Practise more" : "Start today's session"}
+                  </Link>
+                </Button>
+                <Link href="/plan" className="text-xs text-muted-foreground hover:text-foreground">
+                  See the whole week →
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your week</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Your coach plans a 7-day path from your goals and progress. Open the plan to generate this week&apos;s.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/plan">
+                  <CalendarDays className="h-4 w-4" />
+                  Build my week
+                </Link>
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick action cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

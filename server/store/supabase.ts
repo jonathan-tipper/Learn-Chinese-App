@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
 import type {
   AgentRun,
+  CharacterCard,
   GrammarPoint,
   GrammarPointSignal,
+  LearningPlan,
   MemoryItem,
   MessageRecord,
   Profile,
@@ -12,18 +14,21 @@ import type {
   SrsGrade,
   VocabItem
 } from "@/lib/types";
+import type { EndSessionOptions } from "@/server/store/contracts";
+import { isMissingRelationError, warnOnceMissingRelation } from "@/server/store/errors";
+import * as inMemory from "@/server/store/inMemory";
+import { summarizeProgress } from "@/server/store/inMemory";
+import { repairLegacyCard } from "@/server/store/legacyCards";
 import { grammarPointIdentity } from "@/lib/grammar-points";
 import { buildLearningEvent, type LearningEventInput } from "@/lib/learning-events";
-import {
-  deriveWeakTonePairRollups,
-  formatWeakTonePairLabel,
-  normalizeTonePracticeAttempt,
-  type TonePracticeAttempt
-} from "@/lib/tone-practice";
+import { normalizeTonePracticeAttempt, type TonePracticeAttempt } from "@/lib/tone-practice";
 import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
 import { DEFAULT_COMPLEX_MODEL, DEFAULT_SIMPLE_MODEL } from "@/lib/venice";
 import {
+  type SrsCardContext,
+  buildAnswerSafeHints,
+  buildCardTags,
   computeScheduling,
   formatReviewAnswer,
   isValidReviewItem,
@@ -131,7 +136,11 @@ function parseSessionMetrics(value: unknown): SessionMetrics {
     durationSec: typeof metrics.durationSec === "number" ? metrics.durationSec : undefined,
     tonePracticeAttempts: Array.isArray(metrics.tonePracticeAttempts)
       ? metrics.tonePracticeAttempts
-      : undefined
+      : undefined,
+    messageCount: typeof metrics.messageCount === "number" ? metrics.messageCount : undefined,
+    lastActivityAt: typeof metrics.lastActivityAt === "string" ? metrics.lastActivityAt : undefined,
+    autoClosed: metrics.autoClosed === true ? true : undefined,
+    summaryGenerated: metrics.summaryGenerated === true ? true : undefined
   };
 }
 
@@ -306,9 +315,15 @@ export async function getSessionForUser(userId: string, sessionId: string) {
   return data ? mapSession(data) : null;
 }
 
-export async function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
+export async function endSession(
+  sessionId: string,
+  durationSec: number,
+  summary?: string,
+  userId?: string,
+  options: EndSessionOptions = {}
+) {
   const client = getSupabaseServiceClient();
-  const endedAt = nowIso();
+  const endedAt = options.endedAt ?? nowIso();
 
   let existingQuery = client
     .schema(env.supabaseDbSchema)
@@ -326,7 +341,12 @@ export async function endSession(sessionId: string, durationSec: number, summary
   if (selectError) throw selectError;
   if (!existing) return null;
 
-  const metrics = { ...parseSessionMetrics(existing.metrics_json), durationSec };
+  const metrics: SessionMetrics = {
+    ...parseSessionMetrics(existing.metrics_json),
+    durationSec,
+    ...(options.autoClosed ? { autoClosed: true } : {}),
+    ...(options.summaryGenerated ? { summaryGenerated: true } : {})
+  };
 
   let updateQuery = client
     .schema(env.supabaseDbSchema)
@@ -403,6 +423,49 @@ export async function listSessionsByUser(userId: string) {
   return (data ?? []).map(mapSession);
 }
 
+export async function listOpenSessions(userId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, user_id, mode, started_at, ended_at, summary, metrics_json")
+    .eq("user_id", userId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .returns<SessionRow[]>();
+
+  if (error) throw error;
+  return (data ?? []).map(mapSession);
+}
+
+async function touchSessionActivity(sessionId: string, activityAt: string) {
+  const client = getSupabaseServiceClient();
+  const { data: existing, error: selectError } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, metrics_json")
+    .eq("id", sessionId)
+    .maybeSingle<{ id: string; metrics_json: SessionMetrics | null }>();
+
+  if (selectError) throw selectError;
+  if (!existing) return;
+
+  const metrics = parseSessionMetrics(existing.metrics_json);
+  const { error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .update({
+      metrics_json: {
+        ...metrics,
+        messageCount: (metrics.messageCount ?? 0) + 1,
+        lastActivityAt: activityAt
+      }
+    })
+    .eq("id", sessionId);
+
+  if (error) throw error;
+}
+
 export async function appendMessage(sessionId: string, role: MessageRecord["role"], content: string) {
   const client = getSupabaseServiceClient();
   const message: MessageRecord = {
@@ -422,6 +485,13 @@ export async function appendMessage(sessionId: string, role: MessageRecord["role
   });
 
   if (error) throw error;
+
+  try {
+    await touchSessionActivity(sessionId, message.createdAt);
+  } catch (activityError) {
+    console.warn("Failed to record session activity", activityError);
+  }
+
   return message;
 }
 
@@ -510,7 +580,7 @@ export async function deleteMemory(userId: string, memoryId: string) {
   return (data?.length ?? 0) > 0;
 }
 
-export async function addSrsCards(userId: string, items: string[]) {
+export async function addSrsCards(userId: string, items: string[], context: SrsCardContext = {}) {
   if (!items.length) return [];
 
   const client = getSupabaseServiceClient();
@@ -534,8 +604,8 @@ export async function addSrsCards(userId: string, items: string[]) {
       type: "vocab",
       prompt: parsed.chinese,
       answer,
-      hints: ["Recall context from your last session"],
-      tags: ["auto-generated"],
+      hints: buildAnswerSafeHints(parsed.chinese, context),
+      tags: buildCardTags(context),
       ease: 2.5,
       interval: 1,
       next_due_at: now,
@@ -567,7 +637,7 @@ export async function getAllCards(userId: string) {
     .returns<SrsRow[]>();
 
   if (error) throw error;
-  return (data ?? []).map(mapCard);
+  return (data ?? []).map((row) => repairLegacyCard(mapCard(row)).card);
 }
 
 export async function addVocabItems(userId: string, items: string[], sourceSessionId?: string) {
@@ -736,7 +806,162 @@ export async function getDueCards(userId: string, limit = 10) {
     .returns<SrsRow[]>();
 
   if (error) throw error;
-  return (data ?? []).map(mapCard);
+
+  const cards: SrsCard[] = [];
+  const repairs: SrsCard[] = [];
+  for (const row of data ?? []) {
+    const { card, repaired } = repairLegacyCard(mapCard(row));
+    cards.push(card);
+    if (repaired) repairs.push(card);
+  }
+
+  if (repairs.length) {
+    // Write the repaired prompt/answer back so the fix is permanent; never block the review.
+    void Promise.all(
+      repairs.map((card) =>
+        client
+          .schema(env.supabaseDbSchema)
+          .from("srs_cards")
+          .update({ prompt: card.prompt, answer: card.answer, updated_at: nowIso() })
+          .eq("id", card.id)
+          .eq("user_id", userId)
+      )
+    ).catch((repairError) => console.warn("Legacy card repair write-back failed", repairError));
+  }
+
+  return cards;
+}
+
+type LearningPlanRow = {
+  id: string;
+  user_id: string;
+  start_date: string;
+  generated_at: string;
+  plan_json: unknown;
+  model: string | null;
+};
+
+function mapLearningPlan(row: LearningPlanRow): LearningPlan | null {
+  const payload = row.plan_json && typeof row.plan_json === "object" ? (row.plan_json as Partial<LearningPlan>) : null;
+  if (!payload || !Array.isArray(payload.items)) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    startDate: row.start_date,
+    generatedAt: row.generated_at,
+    items: payload.items,
+    rationale: typeof payload.rationale === "string" ? payload.rationale : "",
+    inputs: payload.inputs && typeof payload.inputs === "object" ? payload.inputs : {},
+    model: row.model ?? payload.model
+  };
+}
+
+function planPayload(plan: LearningPlan) {
+  return { items: plan.items, rationale: plan.rationale, inputs: plan.inputs, model: plan.model };
+}
+
+export async function saveLearningPlan(plan: LearningPlan) {
+  const client = getSupabaseServiceClient();
+  const { error } = await from(client, "learning_plans").insert({
+    id: plan.id,
+    user_id: plan.userId,
+    start_date: plan.startDate,
+    generated_at: plan.generatedAt,
+    plan_json: planPayload(plan),
+    model: plan.model ?? null,
+    updated_at: nowIso()
+  });
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("learning_plans", error);
+      return inMemory.saveLearningPlan(plan);
+    }
+    throw error;
+  }
+  return plan;
+}
+
+export async function getLatestLearningPlan(userId: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("learning_plans")
+    .select("id, user_id, start_date, generated_at, plan_json, model")
+    .eq("user_id", userId)
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .returns<LearningPlanRow[]>();
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("learning_plans", error);
+      return inMemory.getLatestLearningPlan(userId);
+    }
+    throw error;
+  }
+  return data?.[0] ? mapLearningPlan(data[0]) : null;
+}
+
+export async function updateLearningPlan(plan: LearningPlan) {
+  const client = getSupabaseServiceClient();
+  const { error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("learning_plans")
+    .update({ plan_json: planPayload(plan), updated_at: nowIso() })
+    .eq("id", plan.id)
+    .eq("user_id", plan.userId);
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("learning_plans", error);
+      return inMemory.updateLearningPlan(plan);
+    }
+    throw error;
+  }
+  return plan;
+}
+
+export async function getCachedCharacterCard(entry: string) {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("character_cards")
+    .select("entry, card_json")
+    .eq("entry", entry)
+    .maybeSingle<{ entry: string; card_json: unknown }>();
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("character_cards", error);
+      return inMemory.getCachedCharacterCard(entry);
+    }
+    throw error;
+  }
+  if (!data?.card_json || typeof data.card_json !== "object") return null;
+  return data.card_json as CharacterCard;
+}
+
+export async function saveCharacterCard(card: CharacterCard) {
+  const client = getSupabaseServiceClient();
+  const { error } = await from(client, "character_cards").upsert(
+    {
+      entry: card.entry,
+      card_json: card,
+      generated_by: card.generatedBy,
+      generated_at: card.generatedAt
+    },
+    { onConflict: "entry" }
+  );
+
+  if (error) {
+    if (isMissingRelationError(error)) {
+      warnOnceMissingRelation("character_cards", error);
+      return inMemory.saveCharacterCard(card);
+    }
+    throw error;
+  }
+  return card;
 }
 
 export async function gradeCard(userId: string, cardId: string, grade: SrsGrade) {
@@ -776,20 +1001,29 @@ export async function gradeCard(userId: string, cardId: string, grade: SrsGrade)
 
 export async function logAgentRun(run: Omit<AgentRun, "id" | "createdAt">) {
   const client = getSupabaseServiceClient();
-  const payload = {
+  const legacyPayload = {
     id: randomUUID(),
     user_id: run.userId,
-    session_id: run.sessionId,
+    session_id: run.sessionId ?? null,
     node_name: run.nodeName,
-    provider: run.provider,
-    tokens: run.tokens,
     latency_ms: run.latencyMs,
     cost_estimate: run.costEstimate,
     created_at: nowIso()
   };
+  const payload = { ...legacyPayload, provider: run.provider, tokens: run.tokens };
 
   const { error } = await from(client, "agent_runs").insert(payload);
-  if (error) throw error;
+  if (!error) return;
+
+  // The usage columns arrive with migration 20260711231000; keep recording runs without them.
+  if (isMissingRelationError(error)) {
+    warnOnceMissingRelation("agent_runs usage columns", error);
+    const { error: legacyError } = await from(client, "agent_runs").insert(legacyPayload);
+    if (legacyError) throw legacyError;
+    return;
+  }
+
+  throw error;
 }
 
 export async function getSessionAgentUsage(userId: string, sessionId: string) {
@@ -864,61 +1098,7 @@ export async function getLastCompletedSession(userId: string): Promise<SessionRe
 }
 
 export async function computeProgressSummary(userId: string) {
-  const sessions = await listSessionsByUser(userId);
-  const cards = await getAllCards(userId);
-  const dueCards = cards.filter((card) => new Date(card.nextDueAt).getTime() <= Date.now());
-
-  const totalMinutes = sessions.reduce((acc, session) => acc + Math.round((session.durationSec ?? 0) / 60), 0);
-  const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const weeklySessions = sessions.filter((session) => {
-    const completedAt = session.endedAt ?? session.startedAt;
-    return Boolean(session.endedAt) && new Date(completedAt).getTime() > weekStartMs;
-  });
-  const weeklyMinutes = weeklySessions.reduce((acc, session) => acc + Math.round((session.durationSec ?? 0) / 60), 0);
-  const completedDays = new Set(
-    sessions
-      .filter((session) => session.endedAt)
-      .map((session) => (session.endedAt ?? session.startedAt).slice(0, 10))
-  );
-  let streakDays = 0;
-  const cursor = new Date(new Date().toISOString().slice(0, 10));
-  while (completedDays.has(cursor.toISOString().slice(0, 10))) {
-    streakDays++;
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
-
-  // Derive weak areas from cards that are struggling (ease < 2.0 or lastResult is "again"/"hard")
-  const strugglingCards = cards.filter(
-    (card) => card.ease < 2.0 || card.lastResult === "again" || card.lastResult === "hard"
-  );
-  const weakAreaSet = new Set<string>();
-  const tonePracticeAttempts = sessions.flatMap((session) => session.metrics?.tonePracticeAttempts ?? []);
-  for (const rollup of deriveWeakTonePairRollups(tonePracticeAttempts)) {
-    weakAreaSet.add(formatWeakTonePairLabel(rollup));
-  }
-  for (const card of strugglingCards) {
-    for (const tag of card.tags) {
-      if (tag && tag !== "auto-generated") weakAreaSet.add(tag);
-    }
-    // Heuristic: if the answer mentions tones (numbers like ā/á/ǎ/à or tone markers), flag tone pairs
-    if (/[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(card.prompt) && card.lastResult === "again") {
-      weakAreaSet.add("tone pairs");
-    }
-  }
-  // If no specific weak areas detected but >20% of cards are struggling, add generic area
-  const weakAreas = Array.from(weakAreaSet).slice(0, 4);
-  if (weakAreas.length === 0 && cards.length > 0 && strugglingCards.length / cards.length > 0.2) {
-    weakAreas.push("recently introduced vocabulary");
-  }
-
-  return {
-    totalSessions: sessions.length,
-    totalMinutes,
-    weeklySessions: weeklySessions.length,
-    weeklyMinutes,
-    streakDays,
-    vocabLearning: cards.length,
-    dueCards: dueCards.length,
-    weakAreas
-  };
+  const [sessions, cards] = await Promise.all([listSessionsByUser(userId), getAllCards(userId)]);
+  const dueCount = cards.filter((card) => new Date(card.nextDueAt).getTime() <= Date.now()).length;
+  return summarizeProgress(sessions, cards, dueCount);
 }

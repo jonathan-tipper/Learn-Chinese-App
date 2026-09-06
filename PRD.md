@@ -4,7 +4,12 @@
 
 ## Implementation status
 
-> Last updated: 2026-03-13 | Branch: `claude/review-prd-scope-cGqli`
+> Last updated: 2026-09-06 | Branch: `feat/coach-core-planner-characters`
+>
+> **v0.2 (this branch):** streaming tutor with full conversation memory, Memory Curator agent,
+> persisted rolling 7-day Curriculum Planner, character library, automatic session lifecycle
+> (auto-close, real durations, model summaries), answer-safe SRS hints, unified Venice client
+> with real token usage. See README "Agent graph" and "Database migrations".
 
 | Symbol | Meaning |
 |--------|---------|
@@ -18,21 +23,21 @@
 |------|--------|-------|
 | Platform foundation | ✅ | Next.js 16, Supabase Auth, Tailwind, shadcn/ui |
 | Data model + RLS | ✅ | All tables live; RLS enforced; 7 migrations |
-| Chat tutor (streaming) | ✅ | LangGraph + Venice; SSE streaming; structured response |
+| Chat tutor (streaming) | ✅ | LangGraph + Venice; true token streaming of the answer; full conversation history; coach style/level-aware prompt; intents handled by the model |
 | Onboarding | ✅ | <2 min; goals, level, style, interests; 7-day plan stub |
-| Memory system | ✅ | remember/forget commands; Memory page; audit trail |
-| SRS + review loop | ✅ | SM-2 scheduling; offline grade queue; PWA cached |
+| Memory system | ✅ | Memory Curator agent auto-extracts durable facts each turn; remember/forget commands; Memory page; audit trail |
+| SRS + review loop | ✅ | SM-2 scheduling; cloze hints from the source sentence + topic tags; legacy cards repaired on read; offline grade queue |
 | Audio / TTS | ✅ | ElevenLabs primary; Venice fallback; play buttons in chat + review |
 | PWA / offline | ✅ | Service worker; install prompt; background sync |
 | Push notifications | ✅ | Web Push API; VAPID; Supabase subscription storage |
 | Home page live stats | ✅ | Streak, due cards, goal fetched from API (not hardcoded) |
 | Continuity preview | ✅ | Fetches real last-session data from `/api/progress/continuity` |
 | Weekly AI recap | ✅ | Venice-generated "Your week in Mandarin" on progress page |
-| Progress / insights | 🔶 | Stats live; weak areas dynamic; weekly targets shown; no D7 metric |
-| Curriculum Planner Agent | 🔶 | Node exists in graph but is a stub — no real rolling plan |
-| Character practice | 🔶 | Pinyin-input quiz in review; no dedicated character card UI with radicals/mnemonics |
+| Progress / insights | ✅ | Streak/minutes from real activity (auto-closed sessions count); mastered vs learning split; weak areas include card topics; learning_events for D1/D7 |
+| Curriculum Planner Agent | ✅ | Persisted rolling 7-day plan (`learning_plans`); today's item drives chat focus; `/plan` page; ticked off at session end; replan on demand |
+| Character practice | ✅ | `/characters` library of studied hanzi; on-demand cards with radical, components, mnemonic, common words, example, usage tip; cached in `character_cards` |
 | Pronunciation coach | 🔶 | Web Speech API mic input exists; no minimal-pair drills or scoring |
-| Cost guardrails | ❌ | No token budgets or per-session spend limits implemented |
+| Cost guardrails | ✅ | Per-session token budget (warn/limit); real provider token usage and per-model cost estimates recorded in `agent_runs` |
 | HSK alignment | ❌ | Deferred to post-v0.1 (non-goal) |
 | Native app | ❌ | Deferred — browser/PWA only |
 
@@ -556,3 +561,4 @@ Priority order for the next development session:
 11. Grammar points active usage
 12. Pronunciation scoring (phoneme/tone heuristics)
 13. Supabase Storage bucket for audio caching server-side
+14. Chinese TTS voice picker — offer multiple Chinese-capable voice options beyond the current default female voice; persist the user's preferred voice and pass the selected `voiceId` through `/api/voice/tts`.
