@@ -9,6 +9,8 @@ import {
   Headphones,
   BarChart2,
   Brain,
+  CalendarDays,
+  Type,
   Settings,
   LogIn
 } from "lucide-react";
@@ -19,11 +21,18 @@ import { AuthControls } from "@/components/auth-controls";
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/chat", label: "Chat", icon: MessageCircle },
+  { href: "/plan", label: "Plan", icon: CalendarDays },
   { href: "/review", label: "Review", icon: BookOpen },
+  { href: "/characters", label: "Characters", icon: Type },
   { href: "/tone-practice", label: "Tones", icon: Headphones },
   { href: "/progress", label: "Progress", icon: BarChart2 },
   { href: "/memory", label: "Memory", icon: Brain }
 ] as const;
+
+/** The bottom bar only has room for the daily loop; the rest is reachable from Home and Progress. */
+const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
+  ["/", "/chat", "/plan", "/review", "/characters", "/progress"].includes(item.href)
+);
 
 const CHROME_HIDDEN_PATHS = new Set(["/login", "/offline"]);
 
@@ -82,7 +91,7 @@ export function SidebarNav() {
             href={item.href}
             label={item.label}
             icon={item.icon}
-            active={pathname === item.href}
+            active={pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))}
           />
         ))}
 
@@ -111,7 +120,7 @@ export function MobileNav() {
   return (
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-sidebar border-t border-sidebar-border safe-area-inset-bottom">
       <div className="flex items-center justify-around px-2 py-2">
-        {NAV_ITEMS.map((item) => {
+        {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
           return (

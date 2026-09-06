@@ -16,8 +16,12 @@ import {
   AlertCircle,
   ShieldCheck,
   BookOpen,
-  Volume2
+  Volume2,
+  Baby,
+  Drama,
+  Brain
 } from "lucide-react";
+import Link from "next/link";
 import { authedFetch } from "@/lib/authed-fetch";
 import { VENICE_MODEL_OPTIONS } from "@/lib/venice";
 import { Button } from "@/components/ui/button";
@@ -33,13 +37,28 @@ type Structured = {
   examples: string[];
   microExercise: string;
   suggestedReviewItems: string[];
+  topic?: string;
 };
+
+type SavedMemory = { key: string; value: string; type: string };
 
 type ChatTurn = {
   user: string;
   assistant: Structured | null;
   loading?: boolean;
+  createdReviewCards?: number;
+  memoriesSaved?: SavedMemory[];
+  model?: string;
 };
+
+type FinalMeta = {
+  createdReviewCards?: number;
+  memoriesSaved?: SavedMemory[];
+  model?: string;
+  budget?: { status: "allow" | "warn" | "limit"; projectedTokens: number; maxTokens: number };
+};
+
+type Intent = "more_examples" | "quiz_me" | "eli5" | "roleplay";
 
 function parseSse(raw: string) {
   const events = raw
@@ -70,16 +89,21 @@ function emptyStructured(answer = ""): Structured {
 
 async function readSseResponse(
   response: Response,
-  onDelta: (content: string) => void
-): Promise<Structured | null> {
+  handlers: {
+    onDelta: (content: string) => void;
+    onStructured?: (structured: Structured) => void;
+    onError?: (message: string) => void;
+  }
+): Promise<{ structured: Structured | null; meta: FinalMeta }> {
   if (!response.body) {
-    return parseSse(await response.text());
+    return { structured: parseSse(await response.text()), meta: {} };
   }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let finalStructured: Structured | null = null;
+  let meta: FinalMeta = {};
 
   while (true) {
     const { value, done } = await reader.read();
@@ -93,12 +117,26 @@ async function readSseResponse(
       if (!eventText) continue;
 
       try {
-        const event = JSON.parse(eventText) as { type?: string; content?: string; structured?: Structured };
+        const event = JSON.parse(eventText) as {
+          type?: string;
+          content?: string;
+          structured?: Structured;
+          error?: string;
+        } & FinalMeta;
         if (event.type === "delta" && event.content) {
-          onDelta(event.content);
-        }
-        if (event.type === "final") {
+          handlers.onDelta(event.content);
+        } else if (event.type === "structured" && event.structured) {
+          handlers.onStructured?.(event.structured);
+        } else if (event.type === "final") {
           finalStructured = event.structured ?? null;
+          meta = {
+            createdReviewCards: event.createdReviewCards,
+            memoriesSaved: event.memoriesSaved,
+            model: event.model,
+            budget: event.budget
+          };
+        } else if (event.type === "error") {
+          handlers.onError?.(event.error ?? "The coach could not answer.");
         }
       } catch {
         // Ignore malformed SSE fragments and keep reading.
@@ -108,7 +146,7 @@ async function readSseResponse(
     if (done) break;
   }
 
-  return finalStructured;
+  return { structured: finalStructured, meta };
 }
 
 function TtsButton({
@@ -264,6 +302,31 @@ function CoachBubble({
                 )}
               </div>
             )}
+
+            {/* What the coach kept from this turn */}
+            {((turn.createdReviewCards ?? 0) > 0 || (turn.memoriesSaved?.length ?? 0) > 0 || turn.assistant?.topic) && (
+              <div className="flex flex-wrap items-center gap-1.5 pl-1">
+                {turn.assistant?.topic && (
+                  <Badge variant="topic" className="text-[10px]">{turn.assistant.topic}</Badge>
+                )}
+                {(turn.createdReviewCards ?? 0) > 0 && (
+                  <Link href="/review" className="inline-flex">
+                    <Badge variant="vocab" className="gap-1 text-[10px]">
+                      <BookmarkPlus className="h-3 w-3" />
+                      {turn.createdReviewCards} new review card{turn.createdReviewCards === 1 ? "" : "s"}
+                    </Badge>
+                  </Link>
+                )}
+                {(turn.memoriesSaved?.length ?? 0) > 0 && (
+                  <Link href="/memory" className="inline-flex" title={turn.memoriesSaved!.map((m) => `${m.key}: ${m.value}`).join("\n")}>
+                    <Badge variant="preference" className="gap-1 text-[10px]">
+                      <Brain className="h-3 w-3" />
+                      Remembered: {turn.memoriesSaved!.map((m) => m.key).join(", ")}
+                    </Badge>
+                  </Link>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -288,6 +351,7 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const sessionStartedAtRef = useRef<number>(Date.now());
 
   const canSend = useMemo(
     () => !!sessionId && input.trim().length > 0 && !isLoading,
@@ -363,11 +427,25 @@ export default function ChatPage() {
         return;
       }
       const data = await response.json();
+      sessionStartedAtRef.current = Date.now();
       setSessionId(data.sessionId);
       setPlanSnippet(data.planSnippet ?? "");
       setSessionStatus("active");
       setStatusMsg("");
       inputRef.current?.focus();
+      // The plan is generated lazily; refresh the banner once it exists.
+      void (async () => {
+        try {
+          const planResponse = await authedFetch("/api/plan");
+          if (!planResponse.ok) return;
+          const planData = await planResponse.json() as { today?: { title: string; lessonFocus: string } | null };
+          if (planData.today) {
+            setPlanSnippet(`Today: ${planData.today.title} — ${planData.today.lessonFocus.replace(/\.$/, "")}.`);
+          }
+        } catch {
+          // keep whatever the session start returned
+        }
+      })();
     } catch {
       setStatusMsg("Error: Could not start a session. Check your connection and try again.");
     }
@@ -379,27 +457,29 @@ export default function ChatPage() {
       const response = await authedFetch("/api/session/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, durationSec: Math.max(60, turns.length * 90), summary: "Session complete" })
+        body: JSON.stringify({ sessionId, durationSec: Math.round((Date.now() - sessionStartedAtRef.current) / 1000) })
       });
       if (!response.ok) {
         const text = await response.text();
         setStatusMsg(`Error: ${text}`);
         return;
       }
+      const data = await response.json() as { summary?: string | null };
       localStorage.setItem("lastSessionDate", new Date().toISOString().slice(0, 10));
       setSessionStatus("ended");
       setSessionId("");
       setPlanSnippet("");
-      setStatusMsg("Session complete. Great work today!");
+      setStatusMsg(data.summary ? `Session saved: ${data.summary}` : "Session complete. Great work today!");
     } catch {
       setStatusMsg("Error: Could not end this session. Check your connection and try again.");
     }
   }
 
-  async function send(intent?: "more_examples" | "quiz_me", saveToReview = false) {
+  async function send(intent?: Intent, saveToReview = false) {
     if (!canSend) return;
     const userMessage = input.trim();
     setInput("");
+    setStatusMsg("");
     setIsLoading(true);
 
     // Optimistically add user turn with loading state
@@ -424,33 +504,65 @@ export default function ChatPage() {
 
       if (!response.ok) {
         const text = await response.text();
+        let message = text;
+        try {
+          const parsed = JSON.parse(text) as { error?: string };
+          if (parsed.error) message = parsed.error;
+        } catch {
+          // keep raw text
+        }
         setTurns((prev) => prev.slice(0, -1));
-        setStatusMsg(`Error: ${text}`);
+        setInput(userMessage);
+        setStatusMsg(`Error: ${message}`);
         return;
       }
 
       let streamedAnswer = "";
-      const structured = await readSseResponse(response, (content) => {
-        streamedAnswer += content;
+      let streamError = "";
+      const updateLast = (patch: Partial<ChatTurn>) => {
         setTurns((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = {
-            user: userMessage,
-            assistant: emptyStructured(streamedAnswer),
-            loading: false
-          };
+          const last = updated[updated.length - 1];
+          updated[updated.length - 1] = { ...last, user: userMessage, loading: false, ...patch };
           return updated;
         });
+      };
+
+      const { structured, meta } = await readSseResponse(response, {
+        onDelta: (content) => {
+          streamedAnswer += content;
+          updateLast({ assistant: emptyStructured(streamedAnswer) });
+        },
+        onStructured: (payload) => {
+          updateLast({ assistant: payload });
+        },
+        onError: (message) => {
+          streamError = message;
+        }
       });
 
-      setTurns((prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = { user: userMessage, assistant: structured ?? emptyStructured(streamedAnswer), loading: false };
-        return updated;
+      if (streamError && !streamedAnswer && !structured) {
+        setTurns((prev) => prev.slice(0, -1));
+        setInput(userMessage);
+        setStatusMsg(`Error: ${streamError}`);
+        return;
+      }
+
+      updateLast({
+        assistant: structured ?? emptyStructured(streamedAnswer),
+        createdReviewCards: meta.createdReviewCards,
+        memoriesSaved: meta.memoriesSaved,
+        model: meta.model
       });
-      setStatusMsg(saveToReview ? "Saved to review cards!" : "");
+
+      if (meta.budget?.status === "warn") {
+        setStatusMsg("Heads up: this session is close to its usage limit. Consider ending it soon and starting fresh.");
+      } else {
+        setStatusMsg(saveToReview ? "Saved to review cards!" : "");
+      }
     } catch {
       setTurns((prev) => prev.slice(0, -1));
+      setInput(userMessage);
       setStatusMsg("Error: Could not reach your coach. Check your connection and try again.");
     } finally {
       setIsLoading(false);
@@ -678,6 +790,27 @@ export default function ChatPage() {
           >
             <FlaskConical className="h-3 w-3" />
             Quiz me
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs px-2.5 text-muted-foreground"
+            onClick={() => send("eli5")}
+            disabled={!canSend}
+            title="Explain like I'm five"
+          >
+            <Baby className="h-3 w-3" />
+            Simpler
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs px-2.5 text-muted-foreground"
+            onClick={() => send("roleplay")}
+            disabled={!canSend}
+          >
+            <Drama className="h-3 w-3" />
+            Roleplay
           </Button>
           <Button
             size="sm"

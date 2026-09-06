@@ -27,6 +27,7 @@ type Summary = {
   weeklyMinutes: number;
   streakDays: number;
   vocabLearning: number;
+  vocabMastered?: number;
   dueCards: number;
   weakAreas: string[];
 };
@@ -65,6 +66,14 @@ const STAT_CARDS = [
     color: "text-jade"
   }
 ];
+
+function masteredLine(summary: Summary | null) {
+  const mastered = summary?.vocabMastered ?? 0;
+  const learning = summary?.vocabLearning ?? 0;
+  const total = mastered + learning;
+  if (total === 0) return "Words you meet in chat become review cards automatically.";
+  return `${mastered} of ${total} words mastered (ease ≥ 3.0 and scheduled 3+ weeks out).`;
+}
 
 function nextWeekFocusTags(weakAreas: string[]): string[] {
   const baseTags = ["SRS review"];
@@ -153,6 +162,10 @@ export default function ProgressPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {!isLoading && (
+        <p className="text-xs text-muted-foreground -mt-4">{masteredLine(summary)}</p>
       )}
 
       {/* Due cards banner */}

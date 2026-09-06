@@ -7,12 +7,20 @@ import { useAuth } from "@/components/auth-provider";
 
 const PUBLIC_PATHS = new Set(["/login", "/offline"]);
 
+/**
+ * Local development only: render the app without a Supabase session so the UI can be
+ * exercised against the API's dev auth fallback (x-user-id / demo user). Never active in
+ * production builds.
+ */
+const DEV_AUTH_BYPASS = process.env.NODE_ENV !== "production"
+  && ["1", "true", "yes", "on"].includes((process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS ?? "").toLowerCase());
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  const isPublic = PUBLIC_PATHS.has(pathname);
+  const isPublic = PUBLIC_PATHS.has(pathname) || DEV_AUTH_BYPASS;
 
   useEffect(() => {
     if (loading || user || isPublic) return;

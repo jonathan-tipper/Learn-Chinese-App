@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
 import type {
   AgentRun,
+  CharacterCard,
   GrammarPoint,
   GrammarPointSignal,
+  LearningPlan,
   MemoryItem,
   MessageRecord,
   Profile,
@@ -12,6 +14,13 @@ import type {
   TutorStructuredResponse,
   VocabItem
 } from "@/lib/types";
+import { repairLegacyCard } from "@/server/store/legacyCards";
+import {
+  activeDaysFromSessions,
+  computeStreakDays,
+  sessionMinutes
+} from "@/server/store/sessionActivity";
+import type { EndSessionOptions } from "@/server/store/contracts";
 import { grammarPointIdentity } from "@/lib/grammar-points";
 import { buildLearningEvent, type LearningEvent, type LearningEventInput } from "@/lib/learning-events";
 import {
@@ -21,9 +30,13 @@ import {
   type TonePracticeAttempt
 } from "@/lib/tone-practice";
 import {
+  type SrsCardContext,
+  buildAnswerSafeHints,
+  buildCardTags,
   computeScheduling,
   formatReviewAnswer,
   isValidReviewItem,
+  isMasteredCard,
   parseVocabItem,
   parseReviewItem,
   srsCardIdentity,
@@ -32,15 +45,59 @@ import {
 
 const now = () => new Date().toISOString();
 
-const sessions = new Map<string, SessionRecord>();
-const messages = new Map<string, MessageRecord[]>();
-const memories = new Map<string, MemoryItem[]>();
-const srsCards = new Map<string, SrsCard[]>();
-const vocabItems = new Map<string, VocabItem[]>();
-const grammarPoints = new Map<string, GrammarPoint[]>();
-const profiles = new Map<string, Profile>();
-const agentRuns: AgentRun[] = [];
-const learningEvents: LearningEvent[] = [];
+/**
+ * Next.js bundles every route separately, so plain module state would give each API route
+ * its own copy of the store. Anchoring the maps on globalThis keeps one shared store per
+ * process (dev server, tests, and the degraded mode used when a Supabase table is missing).
+ */
+type InMemoryState = {
+  sessions: Map<string, SessionRecord>;
+  messages: Map<string, MessageRecord[]>;
+  memories: Map<string, MemoryItem[]>;
+  srsCards: Map<string, SrsCard[]>;
+  vocabItems: Map<string, VocabItem[]>;
+  grammarPoints: Map<string, GrammarPoint[]>;
+  profiles: Map<string, Profile>;
+  agentRuns: AgentRun[];
+  learningEvents: LearningEvent[];
+  learningPlans: Map<string, LearningPlan[]>;
+  characterCards: Map<string, CharacterCard>;
+};
+
+const STATE_KEY = Symbol.for("learn-chinese.in-memory-store");
+
+function getState(): InMemoryState {
+  const holder = globalThis as unknown as Record<symbol, InMemoryState | undefined>;
+  if (!holder[STATE_KEY]) {
+    holder[STATE_KEY] = {
+      sessions: new Map(),
+      messages: new Map(),
+      memories: new Map(),
+      srsCards: new Map(),
+      vocabItems: new Map(),
+      grammarPoints: new Map(),
+      profiles: new Map(),
+      agentRuns: [],
+      learningEvents: [],
+      learningPlans: new Map(),
+      characterCards: new Map()
+    };
+  }
+  return holder[STATE_KEY];
+}
+
+const state = getState();
+const sessions = state.sessions;
+const messages = state.messages;
+const memories = state.memories;
+const srsCards = state.srsCards;
+const vocabItems = state.vocabItems;
+const grammarPoints = state.grammarPoints;
+const profiles = state.profiles;
+const agentRuns = state.agentRuns;
+const learningEvents = state.learningEvents;
+const learningPlans = state.learningPlans;
+const characterCards = state.characterCards;
 
 export function resetInMemoryStore() {
   sessions.clear();
@@ -52,6 +109,8 @@ export function resetInMemoryStore() {
   profiles.clear();
   agentRuns.length = 0;
   learningEvents.length = 0;
+  learningPlans.clear();
+  characterCards.clear();
 }
 
 export function saveProfile(profile: Profile) {
@@ -75,14 +134,29 @@ export function getSessionForUser(userId: string, sessionId: string) {
   return current?.userId === userId ? current : null;
 }
 
-export function endSession(sessionId: string, durationSec: number, summary?: string, userId?: string) {
+export function endSession(
+  sessionId: string,
+  durationSec: number,
+  summary?: string,
+  userId?: string,
+  options: EndSessionOptions = {}
+) {
   const current = sessions.get(sessionId);
   if (!current) return null;
   if (userId && current.userId !== userId) return null;
-  const metrics = { ...(current.metrics ?? {}), durationSec };
-  const updated = { ...current, endedAt: now(), durationSec, summary, metrics };
+  const metrics = {
+    ...(current.metrics ?? {}),
+    durationSec,
+    ...(options.autoClosed ? { autoClosed: true } : {}),
+    ...(options.summaryGenerated ? { summaryGenerated: true } : {})
+  };
+  const updated = { ...current, endedAt: options.endedAt ?? now(), durationSec, summary, metrics };
   sessions.set(sessionId, updated);
   return updated;
+}
+
+export function listOpenSessions(userId: string) {
+  return listSessionsByUser(userId).filter((session) => !session.endedAt);
 }
 
 export function recordTonePracticeAttempts(
@@ -121,6 +195,19 @@ export function appendMessage(sessionId: string, role: MessageRecord["role"], co
   const message: MessageRecord = { id: randomUUID(), sessionId, role, content, createdAt: now() };
   list.push(message);
   messages.set(sessionId, list);
+
+  const session = sessions.get(sessionId);
+  if (session) {
+    const metrics = session.metrics ?? {};
+    sessions.set(sessionId, {
+      ...session,
+      metrics: {
+        ...metrics,
+        messageCount: (metrics.messageCount ?? 0) + 1,
+        lastActivityAt: message.createdAt
+      }
+    });
+  }
   return message;
 }
 
@@ -161,7 +248,7 @@ export function deleteMemory(userId: string, memoryId: string) {
   return true;
 }
 
-export function addSrsCards(userId: string, items: string[]) {
+export function addSrsCards(userId: string, items: string[], context: SrsCardContext = {}) {
   const list = srsCards.get(userId) ?? [];
   const seen = new Set(list.map((card) => srsCardIdentity(card.prompt, card.answer)));
   const created: SrsCard[] = [];
@@ -180,8 +267,8 @@ export function addSrsCards(userId: string, items: string[]) {
       userId,
       prompt: parsed.chinese,
       answer,
-      hints: ["Recall context from your last session"],
-      tags: ["auto-generated"],
+      hints: buildAnswerSafeHints(parsed.chinese, context),
+      tags: buildCardTags(context),
       ease: 2.5,
       interval: 1,
       nextDueAt: now()
@@ -193,7 +280,7 @@ export function addSrsCards(userId: string, items: string[]) {
 }
 
 export function getAllCards(userId: string) {
-  return srsCards.get(userId) ?? [];
+  return (srsCards.get(userId) ?? []).map((card) => repairLegacyCard(card).card);
 }
 
 export function addVocabItems(userId: string, items: string[], sourceSessionId?: string) {
@@ -289,9 +376,35 @@ export function listGrammarPoints(userId: string) {
 
 export function getDueCards(userId: string, limit = 10) {
   const current = Date.now();
-  return (srsCards.get(userId) ?? [])
+  return getAllCards(userId)
     .filter((c) => new Date(c.nextDueAt).getTime() <= current)
     .slice(0, limit);
+}
+
+export function saveLearningPlan(plan: LearningPlan) {
+  const list = (learningPlans.get(plan.userId) ?? []).filter((existing) => existing.id !== plan.id);
+  list.push(plan);
+  learningPlans.set(plan.userId, list);
+  return plan;
+}
+
+export function getLatestLearningPlan(userId: string) {
+  const list = learningPlans.get(userId) ?? [];
+  if (!list.length) return null;
+  return [...list].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))[0];
+}
+
+export function updateLearningPlan(plan: LearningPlan) {
+  return saveLearningPlan(plan);
+}
+
+export function getCachedCharacterCard(entry: string) {
+  return characterCards.get(entry) ?? null;
+}
+
+export function saveCharacterCard(card: CharacterCard) {
+  characterCards.set(card.entry, card);
+  return card;
 }
 
 export function gradeCard(userId: string, cardId: string, grade: SrsGrade) {
@@ -344,24 +457,22 @@ export function computeProgressSummary(userId: string) {
   const userSessions = listSessionsByUser(userId);
   const cards = getAllCards(userId);
   const due = getDueCards(userId, cards.length);
-  const totalMinutes = userSessions.reduce((acc, s) => acc + Math.round((s.durationSec ?? 0) / 60), 0);
-  const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const weeklySessions = userSessions.filter((s) => {
-    const completedAt = s.endedAt ?? s.startedAt;
-    return Boolean(s.endedAt) && new Date(completedAt).getTime() > weekStartMs;
-  });
-  const weeklyMinutes = weeklySessions.reduce((acc, s) => acc + Math.round((s.durationSec ?? 0) / 60), 0);
-  const completedDays = new Set(
-    userSessions
-      .filter((s) => s.endedAt)
-      .map((s) => (s.endedAt ?? s.startedAt).slice(0, 10))
+  return summarizeProgress(userSessions, cards, due.length);
+}
+
+/** Shared progress math for both store implementations. */
+export function summarizeProgress(userSessions: SessionRecord[], cards: SrsCard[], dueCount: number) {
+  const activeSessions = userSessions.filter(
+    (s) => s.endedAt || (s.metrics?.messageCount ?? 0) > 0 || (s.metrics?.tonePracticeAttempts?.length ?? 0) > 0
   );
-  let streakDays = 0;
-  const cursor = new Date(new Date().toISOString().slice(0, 10));
-  while (completedDays.has(cursor.toISOString().slice(0, 10))) {
-    streakDays++;
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-  }
+  const totalMinutes = activeSessions.reduce((acc, s) => acc + sessionMinutes(s), 0);
+  const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weeklySessions = activeSessions.filter((s) => {
+    const completedAt = s.endedAt ?? s.metrics?.lastActivityAt ?? s.startedAt;
+    return new Date(completedAt).getTime() > weekStartMs;
+  });
+  const weeklyMinutes = weeklySessions.reduce((acc, s) => acc + sessionMinutes(s), 0);
+  const streakDays = computeStreakDays(activeDaysFromSessions(userSessions));
 
   const strugglingCards = cards.filter(
     (c) => c.ease < 2.0 || c.lastResult === "again" || c.lastResult === "hard"
@@ -384,14 +495,17 @@ export function computeProgressSummary(userId: string) {
     weakAreas.push("recently introduced vocabulary");
   }
 
+  const vocabMastered = cards.filter(isMasteredCard).length;
+
   return {
-    totalSessions: userSessions.length,
+    totalSessions: activeSessions.length,
     totalMinutes,
     weeklySessions: weeklySessions.length,
     weeklyMinutes,
     streakDays,
-    vocabLearning: cards.length,
-    dueCards: due.length,
+    vocabLearning: cards.length - vocabMastered,
+    vocabMastered,
+    dueCards: dueCount,
     weakAreas
   };
 }

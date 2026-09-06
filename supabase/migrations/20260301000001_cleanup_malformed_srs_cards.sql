@@ -1,20 +1,33 @@
--- Remove malformed SRS cards created before the fix in PR #6.
+-- Repair (and only as a last resort delete) SRS cards created before the fix in PR #6.
 --
--- Two categories of bad rows:
+-- Pre-fix rows stored "Translate or use: 茶 (chá) - tea" as BOTH prompt and answer, so the
+-- reveal showed nothing new. Rather than discarding the learner's scheduling history, split
+-- each row into a hanzi prompt and a "pinyin — English" answer. Rows that cannot be parsed
+-- (no hanzi or no English gloss) are deleted because they cannot be shown as flashcards.
 --
--- 1. prompt = answer (identical fields, reveal shows nothing new).
---    These were generated when deriveReviewItems pulled from examples/keyPoints/
---    microExercise (teaching aids with no prompt/answer split) or when
---    normalizeReviewItem stripped the English translation, leaving both sides
---    holding the same Chinese-only string.
---
--- 2. answer is purely CJK with no English (the reveal is useless).
---    Same root cause — the answer never contained a separable English meaning.
---
--- Fresh, correctly-formatted cards will be generated during the user's next
--- tutor session. SRS scheduling state (ease, interval) for these cards is lost,
--- but since the cards were unreviewed/un-reviewable that is acceptable.
+-- Safe to re-run: repaired rows no longer match either predicate.
+with parsed as (
+  select
+    id,
+    regexp_match(
+      regexp_replace(prompt, '^Translate or use:\s*', ''),
+      '^(.+?)\s*\(([^)]+)\)\s*[-—–]\s*(.+)$'
+    ) as parts
+  from learn_chinese.srs_cards
+  where prompt ~* '^Translate or use:' or prompt = answer
+)
+update learn_chinese.srs_cards as cards
+set
+  prompt = trim(parsed.parts[1]),
+  answer = trim(parsed.parts[2]) || ' — ' || trim(parsed.parts[3]),
+  updated_at = now()
+from parsed
+where cards.id = parsed.id
+  and parsed.parts is not null
+  and trim(parsed.parts[1]) ~ '[一-鿿]'
+  and trim(parsed.parts[3]) ~ '[A-Za-z]';
 
 delete from learn_chinese.srs_cards
 where prompt = answer
-   or answer ~ '^[\u4e00-\u9fff\u3400-\u4dbf\s]+$';
+   or prompt ~* '^Translate or use:'
+   or answer ~ '^[一-鿿\s]+$';

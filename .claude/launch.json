@@ -4,7 +4,22 @@
     {
       "name": "Next.js Dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "Next.js Dev (auth bypass)",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "NEXT_PUBLIC_DEV_AUTH_BYPASS=1",
+        "npm",
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     }
