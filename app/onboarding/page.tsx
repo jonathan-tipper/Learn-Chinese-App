@@ -41,7 +41,20 @@ type FormData = {
   minutesPerDay: string;
   preferredSimpleModel: string;
   preferredComplexModel: string;
+  reminderHour: string;
 };
+
+const REMINDER_OPTIONS = [
+  { value: "off", label: "Off" },
+  { value: "7", label: "7:00 am" },
+  { value: "8", label: "8:00 am" },
+  { value: "12", label: "12:00 pm" },
+  { value: "17", label: "5:00 pm" },
+  { value: "18", label: "6:00 pm" },
+  { value: "19", label: "7:00 pm" },
+  { value: "20", label: "8:00 pm" },
+  { value: "21", label: "9:00 pm" }
+];
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(0);
@@ -58,7 +71,8 @@ export default function OnboardingPage() {
     coachStyle: "friendly",
     minutesPerDay: "10",
     preferredSimpleModel: DEFAULT_SIMPLE_MODEL,
-    preferredComplexModel: DEFAULT_COMPLEX_MODEL
+    preferredComplexModel: DEFAULT_COMPLEX_MODEL,
+    reminderHour: "19"
   });
 
   useEffect(() => {
@@ -93,7 +107,8 @@ export default function OnboardingPage() {
       coachStyle: form.coachStyle,
       minutesPerDay: Number(form.minutesPerDay),
       preferredSimpleModel: form.preferredSimpleModel,
-      preferredComplexModel: form.preferredComplexModel
+      preferredComplexModel: form.preferredComplexModel,
+      reminderHour: form.reminderHour === "off" ? null : Number(form.reminderHour)
     };
 
     try {
@@ -317,6 +332,20 @@ export default function OnboardingPage() {
                     {form.minutesPerDay} min
                   </Badge>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reminderHour">Daily reminder</Label>
+                <p className="text-xs text-muted-foreground">A push notification with today&apos;s focus, only on days you haven&apos;t practised yet.</p>
+                <Select value={form.reminderHour} onValueChange={(v) => updateForm("reminderHour", v)}>
+                  <SelectTrigger id="reminderHour">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REMINDER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </CardContent>
           </Card>

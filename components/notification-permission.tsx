@@ -93,9 +93,9 @@ export function NotificationPermission() {
             </div>
 
             <div className="flex-1 min-w-0 space-y-1">
-              <p className="text-sm font-semibold leading-tight">Enable streak reminders</p>
+              <p className="text-sm font-semibold leading-tight">Enable daily reminders</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Get an evening nudge if you haven&apos;t practised yet.
+                One nudge at your chosen time with today&apos;s focus, only on days you haven&apos;t practised.
               </p>
               <div className="flex gap-2 pt-1">
                 <Button size="sm" className="h-7 text-xs px-3" onClick={enable}>

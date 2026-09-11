@@ -14,6 +14,7 @@ import type {
   TutorStructuredResponse,
   VocabItem
 } from "@/lib/types";
+import { type PronunciationAttempt, deriveWeakPronunciationAreas, normalizePronunciationAttempt } from "@/lib/pronunciation";
 import { repairLegacyCard } from "@/server/store/legacyCards";
 import {
   activeDaysFromSessions,
@@ -122,6 +123,10 @@ export function getProfile(userId: string) {
   return profiles.get(userId) ?? null;
 }
 
+export function listProfilesWithReminders() {
+  return Array.from(profiles.values()).filter((profile) => typeof profile.reminderHour === "number");
+}
+
 export function createSession(userId: string, mode: SessionRecord["mode"]) {
   const session: SessionRecord = { id: randomUUID(), userId, mode, startedAt: now(), metrics: {} };
   sessions.set(session.id, session);
@@ -178,6 +183,21 @@ export function recordTonePracticeAttempts(
   const updated = { ...current, metrics, durationSec: metrics.durationSec };
   sessions.set(sessionId, updated);
   return normalized;
+}
+
+export function recordPronunciationAttempts(
+  userId: string,
+  sessionId: string,
+  attempts: PronunciationAttempt[]
+) {
+  const current = getSessionForUser(userId, sessionId);
+  if (!current) return null;
+
+  const normalized = attempts.map((attempt) => normalizePronunciationAttempt(attempt, sessionId));
+  const all = [...(current.metrics?.pronunciationAttempts ?? []), ...normalized];
+  const metrics = { ...(current.metrics ?? {}), pronunciationAttempts: all, lastActivityAt: now() };
+  sessions.set(sessionId, { ...current, metrics });
+  return { recorded: normalized, all };
 }
 
 export function listSessionsByUser(userId: string) {
@@ -463,7 +483,10 @@ export function computeProgressSummary(userId: string) {
 /** Shared progress math for both store implementations. */
 export function summarizeProgress(userSessions: SessionRecord[], cards: SrsCard[], dueCount: number) {
   const activeSessions = userSessions.filter(
-    (s) => s.endedAt || (s.metrics?.messageCount ?? 0) > 0 || (s.metrics?.tonePracticeAttempts?.length ?? 0) > 0
+    (s) => s.endedAt
+      || (s.metrics?.messageCount ?? 0) > 0
+      || (s.metrics?.tonePracticeAttempts?.length ?? 0) > 0
+      || (s.metrics?.pronunciationAttempts?.length ?? 0) > 0
   );
   const totalMinutes = activeSessions.reduce((acc, s) => acc + sessionMinutes(s), 0);
   const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -481,6 +504,10 @@ export function summarizeProgress(userSessions: SessionRecord[], cards: SrsCard[
   const tonePracticeAttempts = userSessions.flatMap((session) => session.metrics?.tonePracticeAttempts ?? []);
   for (const rollup of deriveWeakTonePairRollups(tonePracticeAttempts)) {
     weakAreaSet.add(formatWeakTonePairLabel(rollup));
+  }
+  const pronunciationAttempts = userSessions.flatMap((session) => session.metrics?.pronunciationAttempts ?? []);
+  for (const label of deriveWeakPronunciationAreas(pronunciationAttempts)) {
+    weakAreaSet.add(label);
   }
   for (const card of strugglingCards) {
     for (const tag of card.tags) {

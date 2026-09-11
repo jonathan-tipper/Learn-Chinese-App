@@ -34,7 +34,45 @@ export default function TonePracticePage() {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [ttsState, setTtsState] = useState<"idle" | "loading" | "error">("idle");
   const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [evidence, setEvidence] = useState<{ state: "idle" | "saving" | "saved" | "failed"; weakTonePairs: string[] }>({ state: "idle", weakTonePairs: [] });
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+
+  async function ensureSession() {
+    if (sessionIdRef.current) return sessionIdRef.current;
+    const response = await authedFetch("/api/session/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "quick" })
+    });
+    if (!response.ok) throw new Error("Could not start a practice session");
+    const data = await response.json() as { sessionId: string };
+    sessionIdRef.current = data.sessionId;
+    return data.sessionId;
+  }
+
+  async function recordEvidence(finalAttempts: TonePracticeAttempt[]) {
+    setEvidence({ state: "saving", weakTonePairs: [] });
+    try {
+      const sessionId = await ensureSession();
+      const response = await authedFetch("/api/tone-practice/attempts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, attempts: finalAttempts })
+      });
+      if (!response.ok) throw new Error("Could not record attempts");
+      const data = await response.json() as { weakTonePairs?: string[] };
+      setEvidence({ state: "saved", weakTonePairs: data.weakTonePairs ?? [] });
+      await authedFetch("/api/session/end", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, durationSec: finalAttempts.length * 20 })
+      }).catch(() => undefined);
+      sessionIdRef.current = null;
+    } catch {
+      setEvidence({ state: "failed", weakTonePairs: [] });
+    }
+  }
 
   const currentPrompt = DRILL_PROMPTS[currentIndex];
   const isComplete = currentIndex >= DRILL_PROMPTS.length;
@@ -102,7 +140,11 @@ export default function TonePracticePage() {
   function goNext() {
     setSelectedAnswer(null);
     setTtsState("idle");
-    setCurrentIndex((index) => index + 1);
+    const nextIndex = currentIndex + 1;
+    setCurrentIndex(nextIndex);
+    if (nextIndex >= DRILL_PROMPTS.length && attempts.length > 0 && online) {
+      void recordEvidence(attempts);
+    }
   }
 
   function restartDrill() {
@@ -110,6 +152,7 @@ export default function TonePracticePage() {
     setAttempts([]);
     setSelectedAnswer(null);
     setTtsState("idle");
+    setEvidence({ state: "idle", weakTonePairs: [] });
   }
 
   return (
@@ -166,6 +209,15 @@ export default function TonePracticePage() {
                 ))}
               </div>
             )}
+
+            <p className="text-xs text-muted-foreground">
+              {evidence.state === "saving" && "Saving this drill to your progress…"}
+              {evidence.state === "saved" && (evidence.weakTonePairs.length > 0
+                ? `Saved. Your coach will work on ${evidence.weakTonePairs.join(", ")}.`
+                : "Saved to your progress.")}
+              {evidence.state === "failed" && "Could not save this drill to your progress (you can still keep practising)."}
+              {evidence.state === "idle" && !online && "Offline: this drill won't be saved to your progress."}
+            </p>
 
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button onClick={restartDrill}>

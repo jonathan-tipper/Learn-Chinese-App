@@ -1,3 +1,4 @@
+import type { PronunciationAttempt } from "@/lib/pronunciation";
 import type { TonePracticeAttempt } from "@/lib/tone-practice";
 
 export type CoachStyle = "strict" | "friendly" | "playful" | "concise";
@@ -9,6 +10,8 @@ export type ModelSelectionMode = "auto" | "simple" | "complex" | "custom";
 export interface SessionMetrics {
   durationSec?: number;
   tonePracticeAttempts?: TonePracticeAttempt[];
+  /** Speaking practice attempts scored by the pronunciation coach. */
+  pronunciationAttempts?: PronunciationAttempt[];
   /** Number of chat messages exchanged (user + assistant). */
   messageCount?: number;
   /** ISO timestamp of the last chat message. */
@@ -29,6 +32,10 @@ export interface Profile {
   minutesPerDay: number;
   preferredSimpleModel: string;
   preferredComplexModel: string;
+  /** Local hour (0-23) for the daily reminder; undefined/null means off. */
+  reminderHour?: number | null;
+  /** Local date (YYYY-MM-DD) of the last reminder sent, to avoid duplicates. */
+  lastReminderDate?: string;
 }
 
 export interface SessionRecord {

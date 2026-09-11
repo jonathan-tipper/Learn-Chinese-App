@@ -21,6 +21,7 @@ import { summarizeProgress } from "@/server/store/inMemory";
 import { repairLegacyCard } from "@/server/store/legacyCards";
 import { grammarPointIdentity } from "@/lib/grammar-points";
 import { buildLearningEvent, type LearningEventInput } from "@/lib/learning-events";
+import { type PronunciationAttempt, normalizePronunciationAttempt } from "@/lib/pronunciation";
 import { normalizeTonePracticeAttempt, type TonePracticeAttempt } from "@/lib/tone-practice";
 import { env } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase";
@@ -137,6 +138,9 @@ function parseSessionMetrics(value: unknown): SessionMetrics {
     tonePracticeAttempts: Array.isArray(metrics.tonePracticeAttempts)
       ? metrics.tonePracticeAttempts
       : undefined,
+    pronunciationAttempts: Array.isArray(metrics.pronunciationAttempts)
+      ? metrics.pronunciationAttempts
+      : undefined,
     messageCount: typeof metrics.messageCount === "number" ? metrics.messageCount : undefined,
     lastActivityAt: typeof metrics.lastActivityAt === "string" ? metrics.lastActivityAt : undefined,
     autoClosed: metrics.autoClosed === true ? true : undefined,
@@ -225,7 +229,9 @@ export async function saveProfile(profile: Profile) {
     interests: profile.interests,
     minutesPerDay: profile.minutesPerDay,
     preferredSimpleModel: profile.preferredSimpleModel,
-    preferredComplexModel: profile.preferredComplexModel
+    preferredComplexModel: profile.preferredComplexModel,
+    reminderHour: typeof profile.reminderHour === "number" ? profile.reminderHour : null,
+    lastReminderDate: profile.lastReminderDate ?? null
   };
 
   const { error } = await from(client, "profiles").upsert(
@@ -257,13 +263,21 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   if (error) throw error;
   if (!data) return null;
 
+  return mapProfileRow(data);
+}
+
+type ProfilePreferences = {
+  interests?: unknown;
+  minutesPerDay?: unknown;
+  preferredSimpleModel?: unknown;
+  preferredComplexModel?: unknown;
+  reminderHour?: unknown;
+  lastReminderDate?: unknown;
+};
+
+function mapProfileRow(data: ProfileRow): Profile {
   const preferences = data.preferences && typeof data.preferences === "object"
-    ? (data.preferences as {
-      interests?: unknown;
-      minutesPerDay?: unknown;
-      preferredSimpleModel?: unknown;
-      preferredComplexModel?: unknown;
-    })
+    ? (data.preferences as ProfilePreferences)
     : {};
 
   return {
@@ -279,8 +293,23 @@ export async function getProfile(userId: string): Promise<Profile | null> {
       : DEFAULT_SIMPLE_MODEL,
     preferredComplexModel: typeof preferences.preferredComplexModel === "string"
       ? preferences.preferredComplexModel
-      : DEFAULT_COMPLEX_MODEL
+      : DEFAULT_COMPLEX_MODEL,
+    reminderHour: typeof preferences.reminderHour === "number" ? preferences.reminderHour : null,
+    lastReminderDate: typeof preferences.lastReminderDate === "string" ? preferences.lastReminderDate : undefined
   };
+}
+
+export async function listProfilesWithReminders() {
+  const client = getSupabaseServiceClient();
+  const { data, error } = await client
+    .schema(env.supabaseDbSchema)
+    .from("profiles")
+    .select("user_id, goals, level, preferences, timezone, coach_style")
+    .not("preferences->reminderHour", "is", null)
+    .returns<ProfileRow[]>();
+
+  if (error) throw error;
+  return (data ?? []).map(mapProfileRow).filter((profile) => typeof profile.reminderHour === "number");
 }
 
 export async function createSession(userId: string, mode: SessionRecord["mode"]) {
@@ -407,6 +436,37 @@ export async function recordTonePracticeAttempts(
 
   if (updateError) throw updateError;
   return normalized;
+}
+
+export async function recordPronunciationAttempts(
+  userId: string,
+  sessionId: string,
+  attempts: PronunciationAttempt[]
+) {
+  const client = getSupabaseServiceClient();
+  const { data: existing, error: selectError } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .select("id, metrics_json")
+    .eq("id", sessionId)
+    .eq("user_id", userId)
+    .maybeSingle<{ id: string; metrics_json: SessionMetrics | null }>();
+
+  if (selectError) throw selectError;
+  if (!existing) return null;
+
+  const normalized = attempts.map((attempt) => normalizePronunciationAttempt(attempt, sessionId));
+  const metrics = parseSessionMetrics(existing.metrics_json);
+  const all = [...(metrics.pronunciationAttempts ?? []), ...normalized];
+  const { error: updateError } = await client
+    .schema(env.supabaseDbSchema)
+    .from("sessions")
+    .update({ metrics_json: { ...metrics, pronunciationAttempts: all, lastActivityAt: nowIso() } })
+    .eq("id", sessionId)
+    .eq("user_id", userId);
+
+  if (updateError) throw updateError;
+  return { recorded: normalized, all };
 }
 
 export async function listSessionsByUser(userId: string) {

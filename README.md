@@ -22,6 +22,14 @@ actually remembers you, plans your week, and streams its answers:
 - **Answer-safe review hints** — new cards carry a cloze of the sentence the word appeared in
   ("Fill the gap: 请给我一杯＿＿。") and the topic it came up under; legacy malformed cards are
   repaired on read.
+- **Pronunciation coach** — the speaking practice on `/review` now uses phrases generated from
+  today's plan and your own vocabulary, and scores what the browser heard syllable by syllable:
+  a homophone with the wrong tone (买 vs 卖) is flagged as a tone slip, a wrong initial (z vs zh)
+  as a sound slip, each with a concrete tip. Repeated slips become weak areas the coach and
+  planner see. The tone drill now records its evidence too.
+- **Daily reminder that says something** — pick a reminder hour in onboarding; an hourly cron
+  (`/api/push/daily`) pushes today's plan item and due-card count, only on days you haven't
+  practised, once per day, in your timezone.
 - **One LLM client** (`server/llm/venice.ts`) with streaming, real token usage, per-model cost
   estimates, and Venice-specific fixes (thinking disabled by default, no injected system
   prompt, recovery when answers land in `reasoning_content`).
@@ -67,6 +75,8 @@ Copy `.env.example` to `.env.local` and fill the values you need:
   - `SESSION_BUDGET_MAX_TOKENS` (defaults to `12000` estimated tokens per session)
   - `SESSION_BUDGET_WARNING_RATIO` (defaults to `0.8`)
   - `SESSION_BUDGET_ESTIMATED_USD_PER_1K_TOKENS` (defaults to `0.001`; an estimate, not billing data)
+- Reminders:
+  - `CRON_SECRET` (Vercel sends it as a bearer token to `/api/push/daily`; the cron is declared in `vercel.json`)
 - ElevenLabs (primary TTS provider):
   - `ELEVENLABS_API_KEY`
   - `ELEVENLABS_VOICE_ID`
@@ -123,6 +133,8 @@ SSE events from `/api/chat`: `delta` (answer text), `structured` (full lesson pa
 - `POST /api/chat` (SSE)
 - `GET /api/plan` (returns today's item; generates when missing or expired) / `POST /api/plan` (replan)
 - `GET /api/characters` (studied entries) / `GET /api/characters/{entry}` (card, `?refresh=1` to regenerate)
+- `GET /api/speaking/prompts` (today's speaking phrases, `?refresh=1` for new ones) / `POST /api/speech/score` (syllable-level scoring, records evidence when `sessionId` is given)
+- `GET|POST /api/push/daily` (hourly cron; `?dryRun=1` lists who would be nudged)
 - `GET /api/srs/next` / `POST /api/srs/grade`
 - `GET /api/memory/list` / `DELETE /api/memory/delete`
 - `GET /api/progress/summary` / `GET /api/progress/continuity` / `GET /api/progress/weekly-recap`
@@ -144,8 +156,8 @@ SSE events from `/api/chat`: `delta` (answer text), `structured` (full lesson pa
 - SRS cards are generated from structured tutor output with dedupe + shared scheduling logic.
 - TTS uses ElevenLabs first, then falls back to Venice audio if ElevenLabs is not configured.
 - Review page includes:
-  - due-card SRS burst
-  - optional browser speech input prompt
+  - due-card SRS burst with cloze hints and character deep links
+  - speaking practice with plan-driven phrases and syllable-level pronunciation feedback
   - character mini-practice (`type pinyin -> check`)
 
 ## Quality checks
