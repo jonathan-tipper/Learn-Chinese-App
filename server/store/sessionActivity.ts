@@ -22,7 +22,9 @@ export function estimateSessionDurationSec(
 ) {
   const startedMs = new Date(session.startedAt).getTime();
   const lastActivity = session.metrics?.lastActivityAt;
-  const hasActivity = (session.metrics?.messageCount ?? 0) > 0;
+  const hasActivity = (session.metrics?.messageCount ?? 0) > 0
+    || (session.metrics?.tonePracticeAttempts?.length ?? 0) > 0
+    || (session.metrics?.pronunciationAttempts?.length ?? 0) > 0;
 
   if (hasActivity && lastActivity) {
     const activeSec = Math.round((new Date(lastActivity).getTime() - startedMs) / 1000) + MIN_CREDITED_SEC;
@@ -50,7 +52,11 @@ export function activeDaysFromSessions(sessions: SessionRecord[]) {
       days.add(session.startedAt.slice(0, 10));
       continue;
     }
-    if ((session.metrics?.messageCount ?? 0) > 0 || (session.metrics?.tonePracticeAttempts?.length ?? 0) > 0) {
+    if (
+      (session.metrics?.messageCount ?? 0) > 0
+      || (session.metrics?.tonePracticeAttempts?.length ?? 0) > 0
+      || (session.metrics?.pronunciationAttempts?.length ?? 0) > 0
+    ) {
       days.add((session.metrics?.lastActivityAt ?? session.startedAt).slice(0, 10));
     }
   }

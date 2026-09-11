@@ -27,7 +27,8 @@ async function saveOnboardingHandler(request: Request) {
       coachStyle: body.coachStyle,
       minutesPerDay: body.minutesPerDay,
       preferredSimpleModel: body.preferredSimpleModel,
-      preferredComplexModel: body.preferredComplexModel
+      preferredComplexModel: body.preferredComplexModel,
+      reminderHour: body.reminderHour ?? null
     };
 
     await saveProfile(profile);

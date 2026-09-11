@@ -1,4 +1,5 @@
 import { isSupabaseStoreEnabled } from "@/lib/env";
+import type { PronunciationAttempt } from "@/lib/pronunciation";
 import type { TonePracticeAttempt } from "@/lib/tone-practice";
 import type {
   AgentRun,
@@ -34,6 +35,10 @@ export async function saveProfile(profile: Profile) {
 
 export async function getProfile(userId: string) {
   return shouldUseSupabaseStore() ? supabase.getProfile(userId) : inMemory.getProfile(userId);
+}
+
+export async function listProfilesWithReminders() {
+  return shouldUseSupabaseStore() ? supabase.listProfilesWithReminders() : inMemory.listProfilesWithReminders();
 }
 
 export async function createSession(userId: string, mode: SessionRecord["mode"]) {
@@ -83,6 +88,16 @@ export async function recordTonePracticeAttempts(
   return shouldUseSupabaseStore()
     ? supabase.recordTonePracticeAttempts(userId, sessionId, attempts)
     : inMemory.recordTonePracticeAttempts(userId, sessionId, attempts);
+}
+
+export async function recordPronunciationAttempts(
+  userId: string,
+  sessionId: string,
+  attempts: PronunciationAttempt[]
+) {
+  return shouldUseSupabaseStore()
+    ? supabase.recordPronunciationAttempts(userId, sessionId, attempts)
+    : inMemory.recordPronunciationAttempts(userId, sessionId, attempts);
 }
 
 export async function listSessionsByUser(userId: string) {

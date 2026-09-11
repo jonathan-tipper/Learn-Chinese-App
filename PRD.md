@@ -9,7 +9,8 @@
 > **v0.2 (this branch):** streaming tutor with full conversation memory, Memory Curator agent,
 > persisted rolling 7-day Curriculum Planner, character library, automatic session lifecycle
 > (auto-close, real durations, model summaries), answer-safe SRS hints, unified Venice client
-> with real token usage. See README "Agent graph" and "Database migrations".
+> with real token usage, pronunciation coach with plan-driven speaking prompts, daily reminders
+> with real content. See README "Agent graph" and "Database migrations".
 
 | Symbol | Meaning |
 |--------|---------|
@@ -36,7 +37,7 @@
 | Progress / insights | ✅ | Streak/minutes from real activity (auto-closed sessions count); mastered vs learning split; weak areas include card topics; learning_events for D1/D7 |
 | Curriculum Planner Agent | ✅ | Persisted rolling 7-day plan (`learning_plans`); today's item drives chat focus; `/plan` page; ticked off at session end; replan on demand |
 | Character practice | ✅ | `/characters` library of studied hanzi; on-demand cards with radical, components, mnemonic, common words, example, usage tip; cached in `character_cards` |
-| Pronunciation coach | 🔶 | Web Speech API mic input exists; no minimal-pair drills or scoring |
+| Pronunciation coach | ✅ | Tone minimal-pair drill with recorded evidence; speaking practice scores the transcript per syllable (tone/sound/missing) with tips; repeated slips feed weak areas |
 | Cost guardrails | ✅ | Per-session token budget (warn/limit); real provider token usage and per-model cost estimates recorded in `agent_runs` |
 | HSK alignment | ❌ | Deferred to post-v0.1 (non-goal) |
 | Native app | ❌ | Deferred — browser/PWA only |
