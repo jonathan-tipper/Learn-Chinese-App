@@ -1,0 +1,3 @@
+-- Placeholder: version 20260712224026 exists in the shared Supabase project's migration history
+-- (applied by another app or via the dashboard). Kept so `supabase db push` accepts the history.
+-- Intentionally empty; never executed.
