@@ -27,9 +27,9 @@ actually remembers you, plans your week, and streams its answers:
   a homophone with the wrong tone (买 vs 卖) is flagged as a tone slip, a wrong initial (z vs zh)
   as a sound slip, each with a concrete tip. Repeated slips become weak areas the coach and
   planner see. The tone drill now records its evidence too.
-- **Daily reminder that says something** — pick a reminder hour in onboarding; an hourly cron
-  (`/api/push/daily`) pushes today's plan item and due-card count, only on days you haven't
-  practised, once per day, in your timezone.
+- **Daily reminder that says something** — pick a reminder hour in onboarding; an hourly
+  GitHub Actions cron calls `/api/push/daily`, which pushes today's plan item and due-card count,
+  only on days you haven't practised, once per day, in your timezone.
 - **One LLM client** (`server/llm/venice.ts`) with streaming, real token usage, per-model cost
   estimates, and Venice-specific fixes (thinking disabled by default, no injected system
   prompt, recovery when answers land in `reasoning_content`).
@@ -76,7 +76,7 @@ Copy `.env.example` to `.env.local` and fill the values you need:
   - `SESSION_BUDGET_WARNING_RATIO` (defaults to `0.8`)
   - `SESSION_BUDGET_ESTIMATED_USD_PER_1K_TOKENS` (defaults to `0.001`; an estimate, not billing data)
 - Reminders:
-  - `CRON_SECRET` (Vercel sends it as a bearer token to `/api/push/daily`; the cron is declared in `vercel.json`)
+  - `CRON_SECRET` (bearer token expected by `/api/push/daily`; the hourly schedule lives in `.github/workflows/daily-reminders.yml` because Vercel Hobby crons are daily-only — set the same value as a GitHub Actions secret)
 - ElevenLabs (primary TTS provider):
   - `ELEVENLABS_API_KEY`
   - `ELEVENLABS_VOICE_ID`
@@ -134,7 +134,7 @@ SSE events from `/api/chat`: `delta` (answer text), `structured` (full lesson pa
 - `GET /api/plan` (returns today's item; generates when missing or expired) / `POST /api/plan` (replan)
 - `GET /api/characters` (studied entries) / `GET /api/characters/{entry}` (card, `?refresh=1` to regenerate)
 - `GET /api/speaking/prompts` (today's speaking phrases, `?refresh=1` for new ones) / `POST /api/speech/score` (syllable-level scoring, records evidence when `sessionId` is given)
-- `GET|POST /api/push/daily` (hourly cron; `?dryRun=1` lists who would be nudged)
+- `GET|POST /api/push/daily` (called hourly by GitHub Actions; `?dryRun=1` lists who would be nudged)
 - `GET /api/srs/next` / `POST /api/srs/grade`
 - `GET /api/memory/list` / `DELETE /api/memory/delete`
 - `GET /api/progress/summary` / `GET /api/progress/continuity` / `GET /api/progress/weekly-recap`

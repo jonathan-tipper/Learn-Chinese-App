@@ -4,8 +4,8 @@ import { collectReminderCandidates, markReminderSent } from "@/server/agents/dai
 import { sendPushToUser } from "@/server/push";
 
 /**
- * Hourly cron (see vercel.json). Vercel sends `Authorization: Bearer <CRON_SECRET>`;
- * the service-role key is also accepted so it can be triggered manually.
+ * Called hourly by .github/workflows/daily-reminders.yml with `Authorization: Bearer <CRON_SECRET>`
+ * (Vercel Hobby crons are daily-only). The service-role key is also accepted for manual runs.
  */
 function isAuthorized(request: Request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
