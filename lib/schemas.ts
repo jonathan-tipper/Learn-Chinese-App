@@ -65,5 +65,6 @@ export const onboardingSchema = z.object({
   coachStyle: z.enum(["strict", "friendly", "playful", "concise"]),
   minutesPerDay: z.number().min(5).max(60),
   preferredSimpleModel: z.string().default(DEFAULT_SIMPLE_MODEL),
-  preferredComplexModel: z.string().default(DEFAULT_COMPLEX_MODEL)
+  preferredComplexModel: z.string().default(DEFAULT_COMPLEX_MODEL),
+  reminderHour: z.number().int().min(0).max(23).nullable().optional()
 });

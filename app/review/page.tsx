@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowRight,
   BookOpen,
   CheckCircle2,
   ChevronRight,
@@ -11,10 +12,12 @@ import {
   Mic,
   RefreshCw,
   RotateCcw,
+  Shuffle,
   Volume2,
   XCircle
 } from "lucide-react";
 import { authedFetch } from "@/lib/authed-fetch";
+import type { PronunciationScore, SpeakingPrompt, SyllableStatus } from "@/lib/pronunciation";
 import { drainQueue, enqueueGrade } from "@/lib/srs-queue";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { Button } from "@/components/ui/button";
@@ -70,9 +73,16 @@ const GRADE_CONFIG = {
 
 type Grade = keyof typeof GRADE_CONFIG;
 
-const SPEAKING_TARGET = "我今天想点一杯茶";
 const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf]/;
 const LEGACY_PREFIX_RE = /^Translate or use:\s*/i;
+
+const SYLLABLE_STYLES: Record<SyllableStatus, { chip: string; label: string }> = {
+  match: { chip: "border-jade/40 bg-jade/10 text-foreground", label: "Good" },
+  tone: { chip: "border-amber-400/60 bg-amber-100/60 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200", label: "Tone" },
+  sound: { chip: "border-destructive/40 bg-destructive/10 text-foreground", label: "Sound" },
+  missing: { chip: "border-dashed border-muted-foreground/40 text-muted-foreground line-through", label: "Missed" },
+  extra: { chip: "border-dotted border-muted-foreground/40 text-muted-foreground", label: "Extra" }
+};
 
 /** Strip legacy prefix and embedded English/pinyin, leaving only the Chinese/hanzi for the prompt. */
 function cleanPromptForDisplay(prompt: string): string {
@@ -118,33 +128,6 @@ function isMalformedCard(prompt: string, answer: string): boolean {
   return cleanedPrompt === cleanedAnswer || (CJK_RE.test(cleanedAnswer) && !/[a-zA-Z]/.test(cleanedAnswer));
 }
 
-function normalizeSpeechText(text: string): string {
-  return text
-    .normalize("NFKC")
-    .replace(/[^\u4e00-\u9fff\u3400-\u4dbf]/g, "");
-}
-
-function getSpeakingFeedback(transcript: string): { type: "success" | "retry"; message: string } {
-  const normalizedTranscript = normalizeSpeechText(transcript);
-  const normalizedTarget = normalizeSpeechText(SPEAKING_TARGET);
-
-  if (!normalizedTranscript) {
-    return { type: "retry", message: "No Mandarin phrase was captured. Try again in a quieter spot." };
-  }
-
-  if (normalizedTranscript === normalizedTarget) {
-    return { type: "success", message: "Matched the phrase. Good capture." };
-  }
-
-  const substantialPartial = normalizedTarget.includes(normalizedTranscript)
-    && normalizedTranscript.length >= normalizedTarget.length - 2;
-  if (normalizedTranscript.includes(normalizedTarget) || substantialPartial) {
-    return { type: "success", message: "Close match. Try once more if you want a cleaner capture." };
-  }
-
-  return { type: "retry", message: "That did not match the phrase yet. Try speaking the full sentence slowly." };
-}
-
 function getSpeechRecognitionErrorMessage(event: SpeechRecognitionErrorEventLike): string {
   switch (event.error) {
     case "not-allowed":
@@ -182,6 +165,12 @@ export default function ReviewPage() {
   const [spokenText, setSpokenText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
+  const [prompts, setPrompts] = useState<SpeakingPrompt[]>([]);
+  const [promptIndex, setPromptIndex] = useState(0);
+  const [promptsLoading, setPromptsLoading] = useState(true);
+  const [scoreResult, setScoreResult] = useState<PronunciationScore | null>(null);
+  const [isScoring, setIsScoring] = useState(false);
+  const speakSessionIdRef = useRef<string | null>(null);
   const [characterInput, setCharacterInput] = useState("");
   const [characterIndex, setCharacterIndex] = useState(0);
   const [charFeedback, setCharFeedback] = useState<"correct" | "wrong" | null>(null);
@@ -201,7 +190,8 @@ export default function ReviewPage() {
       const response = await authedFetch("/api/voice/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, speed: 0.85 })
+        // Chinese text must go to the Chinese-capable voice.
+        body: JSON.stringify(CJK_RE.test(text) ? { text, speed: 0.85, lang: "zh" } : { text, speed: 0.85 })
       });
       if (!response.ok) throw new Error("TTS request failed");
       const data = await response.json();
@@ -219,10 +209,72 @@ export default function ReviewPage() {
     () => characterQuestions[characterIndex % characterQuestions.length],
     [characterIndex]
   );
-  const speakingFeedback = useMemo(
-    () => spokenText ? getSpeakingFeedback(spokenText) : null,
-    [spokenText]
-  );
+  const currentPrompt = prompts[promptIndex % Math.max(1, prompts.length)];
+
+  const loadPrompts = useCallback(async (refresh = false) => {
+    setPromptsLoading(true);
+    try {
+      const response = await authedFetch(`/api/speaking/prompts${refresh ? "?refresh=1" : ""}`);
+      if (!response.ok) return;
+      const data = await response.json() as { prompts: SpeakingPrompt[] };
+      if (Array.isArray(data.prompts) && data.prompts.length > 0) {
+        setPrompts(data.prompts);
+        setPromptIndex(0);
+        setScoreResult(null);
+        setSpokenText("");
+      }
+    } catch {
+      // keep whatever we have
+    } finally {
+      setPromptsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPrompts();
+  }, [loadPrompts]);
+
+  async function ensureSpeakingSession() {
+    if (speakSessionIdRef.current) return speakSessionIdRef.current;
+    const response = await authedFetch("/api/session/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "quick" })
+    });
+    if (!response.ok) return null;
+    const data = await response.json() as { sessionId: string };
+    speakSessionIdRef.current = data.sessionId;
+    return data.sessionId;
+  }
+
+  async function scoreTranscript(transcript: string, target: string) {
+    setIsScoring(true);
+    setScoreResult(null);
+    try {
+      const sessionId = await ensureSpeakingSession().catch(() => null);
+      const response = await authedFetch("/api/speech/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target, transcript, ...(sessionId ? { sessionId } : {}) })
+      });
+      if (!response.ok) {
+        setSpeechError("Could not score that attempt. Try again.");
+        return;
+      }
+      setScoreResult(await response.json() as PronunciationScore);
+    } catch {
+      setSpeechError("Could not reach the pronunciation coach. Check your connection and try again.");
+    } finally {
+      setIsScoring(false);
+    }
+  }
+
+  function nextPrompt() {
+    setSpokenText("");
+    setSpeechError("");
+    setScoreResult(null);
+    setPromptIndex((index) => index + 1);
+  }
 
   const progressPct = totalLoaded > 0 ? (completedCount / totalLoaded) * 100 : 0;
 
@@ -375,6 +427,7 @@ export default function ReviewPage() {
       if (transcript.trim()) {
         setSpokenText(transcript);
         setSpeechError("");
+        if (currentPrompt) void scoreTranscript(transcript, currentPrompt.hanzi);
       } else {
         setSpeechError("No speech was captured. Try again in a quieter spot.");
       }
@@ -630,22 +683,59 @@ export default function ReviewPage() {
 
       {/* Speaking practice */}
       <div className="space-y-4">
-        <h2 className="text-base font-semibold">Speaking practice</h2>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Speaking practice</h2>
+            <p className="text-xs text-muted-foreground">
+              {currentPrompt?.source === "plan"
+                ? "Phrases from today's plan and your vocabulary."
+                : currentPrompt?.source === "vocab"
+                  ? "Phrases built from words you've met."
+                  : "Say the phrase; the coach checks each syllable."}
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => void loadPrompts(true)} disabled={promptsLoading}>
+            <Shuffle className={cn("h-3.5 w-3.5", promptsLoading && "animate-spin")} />
+            New phrases
+          </Button>
+        </div>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Say this phrase</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Say this phrase{prompts.length > 1 ? ` · ${(promptIndex % prompts.length) + 1} of ${prompts.length}` : ""}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-lg font-medium">
-              <span className="hanzi text-2xl">我今天想点一杯茶。</span>
-            </p>
-            <p className="text-xs text-muted-foreground">Wǒ jīntiān xiǎng diǎn yī bēi chá. — I want to order a cup of tea today.</p>
+            {promptsLoading && !currentPrompt ? (
+              <div className="animate-pulse space-y-2">
+                <div className="h-8 w-56 rounded bg-muted" />
+                <div className="h-3 w-72 rounded bg-muted" />
+              </div>
+            ) : currentPrompt ? (
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="hanzi text-2xl font-medium">{currentPrompt.hanzi}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{currentPrompt.pinyin} — {currentPrompt.english}</p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => void playTts("speaking-prompt", currentPrompt.hanzi)}
+                  disabled={ttsLoadingId === "speaking-prompt"}
+                  aria-label="Play the phrase"
+                >
+                  {ttsLoadingId === "speaking-prompt" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+              </div>
+            ) : null}
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant={isListening ? "default" : "outline"}
                 size="sm"
                 onClick={startSpeechInput}
+                disabled={!currentPrompt || isScoring}
                 className={cn(isListening && "bg-crimson text-crimson-foreground border-crimson")}
               >
                 {isListening ? (
@@ -662,10 +752,17 @@ export default function ReviewPage() {
                   onClick={() => {
                     setSpokenText("");
                     setSpeechError("");
+                    setScoreResult(null);
                   }}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Clear
+                </Button>
+              )}
+              {prompts.length > 1 && (
+                <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" onClick={nextPrompt}>
+                  Next phrase
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
@@ -677,24 +774,54 @@ export default function ReviewPage() {
               </div>
             )}
 
-            {spokenText && (
-              <div className={cn(
-                "rounded-lg px-3 py-2 animate-fade-in",
-                speakingFeedback?.type === "success" ? "bg-jade/10" : "bg-muted"
-              )}>
-                <p className="text-xs text-muted-foreground mb-1">Captured:</p>
-                <p className="text-sm font-medium">{spokenText}</p>
-                {speakingFeedback && (
-                  <p className={cn(
-                    "mt-2 flex items-center gap-1.5 text-xs",
-                    speakingFeedback.type === "success" ? "text-jade" : "text-muted-foreground"
-                  )}>
-                    {speakingFeedback.type === "success" ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    ) : (
-                      <XCircle className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    {speakingFeedback.message}
+            {isScoring && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking each syllable…
+              </p>
+            )}
+
+            {scoreResult && (
+              <div className="space-y-3 animate-fade-in">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={scoreResult.verdict === "great" ? "jade" : scoreResult.verdict === "close" ? "amber" : "destructive"}>
+                    {scoreResult.score}% · {scoreResult.verdict === "great" ? "Great" : scoreResult.verdict === "close" ? "Close" : "Try again"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">Heard: {scoreResult.heardText || "nothing"}</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {scoreResult.results.map((result, index) => {
+                    const syllable = result.status === "extra" ? result.heard : result.target;
+                    if (!syllable) return null;
+                    const style = SYLLABLE_STYLES[result.status];
+                    return (
+                      <div
+                        key={`${index}-${syllable.hanzi}`}
+                        className={cn("flex flex-col items-center rounded-lg border px-2.5 py-1.5 min-w-[3rem]", style.chip)}
+                        title={result.note ?? style.label}
+                      >
+                        <span className="hanzi text-lg leading-none">{syllable.hanzi}</span>
+                        <span className="text-[10px] mt-1">{syllable.pinyin}</span>
+                        {result.status !== "match" && (
+                          <span className="text-[9px] uppercase tracking-wide opacity-80">{style.label}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {scoreResult.tips.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {scoreResult.tips.map((tip, index) => (
+                      <li key={index} className="flex items-start gap-2 text-xs text-foreground/90">
+                        <span className="text-jade mt-0.5">·</span>
+                        <span>{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {scoreResult.weakAreas && scoreResult.weakAreas.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Noted for your coach: {scoreResult.weakAreas.join(", ")}.
                   </p>
                 )}
               </div>
