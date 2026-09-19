@@ -5,6 +5,7 @@ import Link from "next/link";
 import { WifiOff, BookOpen, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function OfflinePage() {
   // Reload automatically when the connection is restored
@@ -61,6 +62,9 @@ export default function OfflinePage() {
             </p>
           </CardContent>
         </Card>
+        <div className="flex justify-center">
+          <ThemeToggle />
+        </div>
       </div>
     </div>
   );
