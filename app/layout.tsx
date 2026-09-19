@@ -4,6 +4,8 @@ import { AuthProvider } from "@/components/auth-provider";
 import { SidebarNav, MobileNav, MobileHeader } from "@/components/sidebar-nav";
 import { InstallPrompt } from "@/components/install-prompt";
 import { NotificationPermission } from "@/components/notification-permission";
+import { ThemeColour } from "@/components/theme-colour";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,13 +14,12 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black",
     title: "Mandarin Coach",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2d7d6a",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -26,8 +27,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
+    <html lang="en" className="dark" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
+        <ThemeColour />
+        {/* This small inline script must run before paint, without waiting for hydration. */}
+        <script id="theme-init" dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Inter + Noto Serif SC — loaded via <link> so builds work in offline CI */}

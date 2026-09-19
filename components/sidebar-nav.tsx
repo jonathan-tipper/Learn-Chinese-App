@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { AuthControls } from "@/components/auth-controls";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
@@ -107,6 +108,7 @@ export function SidebarNav() {
 
       {/* User section */}
       <div className="px-3 pb-4 border-t border-sidebar-border pt-3">
+        <ThemeToggle className="mb-2 w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-foreground focus-visible:ring-offset-sidebar" />
         <AuthControls compact />
       </div>
     </aside>
@@ -164,7 +166,7 @@ export function MobileHeader() {
       </Link>
       <div className="flex items-center gap-2">
         {user ? (
-          <span className="text-xs text-muted-foreground truncate max-w-[140px]">{user.email}</span>
+          <span className="hidden sm:block text-xs text-muted-foreground truncate max-w-[140px]">{user.email}</span>
         ) : (
           <Link
             href="/login"
@@ -174,6 +176,7 @@ export function MobileHeader() {
             Sign in
           </Link>
         )}
+        <ThemeToggle compact />
       </div>
     </header>
   );

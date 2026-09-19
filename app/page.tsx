@@ -293,7 +293,7 @@ export default function HomePage() {
               variant="outline"
               size="sm"
               asChild
-              className="border-orange-300 text-orange-800 hover:bg-orange-100 dark:border-orange-800 dark:text-orange-400"
+              className="border-orange-300 text-orange-800 hover:bg-orange-100 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-950/30"
             >
               <Link href="/review">
                 <BookOpen className="h-4 w-4" />

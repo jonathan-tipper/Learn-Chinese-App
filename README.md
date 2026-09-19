@@ -160,6 +160,19 @@ SSE events from `/api/chat`: `delta` (answer text), `structured` (full lesson pa
   - speaking practice with plan-driven phrases and syllable-level pronunciation feedback
   - character mini-practice (`type pinyin -> check`)
 
+## Appearance
+
+Dark mode is the default, including when the device prefers light mode. Use the theme
+switch at the bottom of the desktop sidebar or in the mobile header to choose light
+mode. The login and offline pages also have a switch. The choice is saved in this
+browser and synchronised across tabs; if browser storage is blocked, the switch still
+works for the current page.
+
+The palette lives in `app/globals.css`. Keep new UI on the semantic colour tokens and
+check both themes when adding custom colours. `lib/theme.ts` applies the saved theme
+before the first paint and keeps browser chrome in sync. The installed app's launch
+background uses the default dark colour in `public/manifest.json`.
+
 ## Quality checks
 
 ```bash
