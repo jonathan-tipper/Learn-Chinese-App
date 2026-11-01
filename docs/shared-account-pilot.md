@@ -64,7 +64,11 @@ or is signed out.
 `lib/suite-token-policy.ts` inspect its verified claims. In suite mode, the API
 requires the expected issuer, authenticated audience/role, matching user UUID and
 this app's `client_id`. A different app's valid token is denied. Direct tokens
-require the explicit compatibility switch. Development identity fallback is
+require the explicit compatibility switch. Outside suite mode, those identity
+checks remain active and only direct sessions without a `client_id` are accepted;
+all OAuth app tokens are rejected, including Learn's previously issued tokens.
+Disabling the frontend flag is therefore also an API admission rollback, while
+legacy direct sessions stay available without requiring an OAuth client setting. Development identity fallback is
 disabled while suite mode is enabled, even if an old dev environment flag remains.
 
 The source APIs use a service-role database client. RLS does not restrict that

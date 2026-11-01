@@ -29,7 +29,32 @@ describe("app binding after Supabase identity verification", () => {
     expect(acceptsVerifiedSuiteToken(token(), userId, { ...config, clientId: "" })).toBe(false);
   });
 
-  it("leaves the legacy-only rollout unchanged when the suite feature is disabled", () => {
-    expect(acceptsVerifiedSuiteToken("verified-legacy-token", userId, { ...config, enabled: false })).toBe(true);
+  it("preserves valid direct sessions while suite sign-in is disabled", () => {
+    const disabled = { ...config, enabled: false, clientId: "" };
+    expect(acceptsVerifiedSuiteToken(token({ client_id: null }), userId, disabled)).toBe(true);
+    expect(acceptsVerifiedSuiteToken(token({ client_id: undefined }), userId, disabled)).toBe(true);
+    expect(acceptsVerifiedSuiteToken(token({ client_id: null }), userId, { ...disabled, allowLegacySessions: true })).toBe(true);
+  });
+
+  it.each(["learn-chinese-client", "another-app", "", false, 0, [], {}])(
+    "rejects non-null client claims during disabled or rollback mode: %j", (clientId) => {
+      expect(acceptsVerifiedSuiteToken(token({ client_id: clientId }), userId, { ...config, enabled: false })).toBe(false);
+    }
+  );
+
+  it.each([true, false])("keeps identity and audience validation active with suite enabled=%s", (enabled) => {
+    const mode = { ...config, enabled, allowLegacySessions: true };
+    for (const claims of [
+      { sub: "22222222-2222-4222-8222-222222222222" },
+      { iss: "https://other.supabase.co/auth/v1" },
+      { role: "service_role" },
+      { aud: config.clientId },
+      { aud: ["authenticated", {}] }
+    ]) {
+      expect(acceptsVerifiedSuiteToken(token({ client_id: null, ...claims }), userId, mode)).toBe(false);
+    }
+    for (const malformed of ["verified-legacy-token", "header.null.signature", ".e30.signature", "header.!!!.signature"]) {
+      expect(acceptsVerifiedSuiteToken(malformed, userId, mode)).toBe(false);
+    }
   });
 });
