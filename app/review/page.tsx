@@ -19,7 +19,7 @@ import {
 import { authedFetch } from "@/lib/authed-fetch";
 import type { PronunciationScore, SpeakingPrompt, SyllableStatus } from "@/lib/pronunciation";
 import { drainQueue, enqueueGrade } from "@/lib/srs-queue";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { getBrowserAccessToken } from "@/lib/suite-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -281,11 +281,10 @@ export default function ReviewPage() {
   // Drain any queued grades the moment the browser comes back online
   useEffect(() => {
     async function handleOnline() {
-      const supabase = getSupabaseBrowserClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
+      const accessToken = await getBrowserAccessToken().catch(() => null);
+      if (!accessToken) return;
 
-      const sent = await drainQueue(session.access_token);
+      const sent = await drainQueue(accessToken);
       if (sent > 0) {
         setStatus({ type: "success", message: `Synced ${sent} offline grade${sent > 1 ? "s" : ""}.` });
       }
@@ -358,9 +357,8 @@ export default function ReviewPage() {
       setStatus({ type: "success", message: `Graded "${gradeValue}" — next review: ${next}` });
     } catch {
       // Network error — queue for later replay
-      const supabase = getSupabaseBrowserClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
+      const accessToken = await getBrowserAccessToken().catch(() => null);
+      if (accessToken) {
         await enqueueGrade({ cardId, grade: gradeValue });
         setStatus({ type: "idle", message: "You're offline — grade saved and will sync when this device is online." });
         return;

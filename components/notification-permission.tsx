@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { getBrowserAccessToken } from "@/lib/suite-auth";
 import { useAuth } from "@/components/auth-provider";
 
 const DISMISSED_KEY = "push-permission-dismissed";
@@ -52,15 +52,14 @@ export function NotificationPermission() {
       });
 
       // Get the current Supabase session so we can pass the bearer token
-      const supabase = getSupabaseBrowserClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = await getBrowserAccessToken();
 
       const response = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(session?.access_token
-            ? { Authorization: `Bearer ${session.access_token}` }
+          ...(accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
             : {}),
         },
         body: JSON.stringify(sub.toJSON()),

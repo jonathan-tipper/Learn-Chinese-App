@@ -6,6 +6,7 @@ import { LogIn, LogOut, UserCircle } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { suiteAccountLink } from "@/lib/suite-auth";
 
 export function AuthControls({ compact = false }: { compact?: boolean }) {
   const { user, loading, signOut } = useAuth();
@@ -14,8 +15,7 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
 
   async function onSignOut() {
     const error = await signOut();
-    if (error) return;
-    router.push("/login");
+    router.push(error ? "/login?notice=revocation-unconfirmed" : "/login");
   }
 
   if (loading) {
@@ -62,13 +62,15 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
             {user.email ?? "Signed in"}
           </span>
         </div>
+        <a href={suiteAccountLink("/launchpad")} className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/60">Launchpad</a>
+        <a href={suiteAccountLink("/account")} className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/60">jonathantipper.com account</a>
         <button
           type="button"
           onClick={onSignOut}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground transition-colors"
         >
           <LogOut className="h-4 w-4 shrink-0" />
-          <span>Sign out</span>
+          <span>Sign out of this app</span>
         </button>
       </div>
     );
@@ -76,12 +78,14 @@ export function AuthControls({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="flex items-center gap-3">
+      <a href={suiteAccountLink("/launchpad")} className="text-sm underline">Launchpad</a>
+      <a href={suiteAccountLink("/account")} className="text-sm underline">Account</a>
       <span className="text-sm text-muted-foreground truncate max-w-[200px]">
         {user.email ?? "Signed in"}
       </span>
       <Button variant="ghost" size="sm" onClick={onSignOut}>
         <LogOut className="h-4 w-4" />
-        Sign out
+        Sign out of this app
       </Button>
     </div>
   );

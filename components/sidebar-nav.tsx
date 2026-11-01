@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { AuthControls } from "@/components/auth-controls";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { suiteAccountLink } from "@/lib/suite-auth";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
@@ -35,7 +36,7 @@ const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
   ["/", "/chat", "/plan", "/review", "/characters", "/progress"].includes(item.href)
 );
 
-const CHROME_HIDDEN_PATHS = new Set(["/login", "/offline"]);
+const CHROME_HIDDEN_PATHS = new Set(["/login", "/offline", "/auth/suite/callback"]);
 
 function NavLink({
   href,
@@ -165,6 +166,7 @@ export function MobileHeader() {
         <span className="font-semibold text-sm">Learn Chinese</span>
       </Link>
       <div className="flex items-center gap-2">
+        <a href={suiteAccountLink("/launchpad")} className="inline-flex min-h-11 items-center px-2 text-xs font-medium underline">Launchpad</a>
         {user ? (
           <span className="hidden sm:block text-xs text-muted-foreground truncate max-w-[140px]">{user.email}</span>
         ) : (

@@ -10,11 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { safeAppReturnPath, suiteAccountLink, suiteCanonicalAppUrl } from "@/lib/suite-auth";
 
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { loading, user, signInWithOAuth, signInWithPassword, signUpWithPassword } = useAuth();
+  const { loading, user, authError, suiteEnabled, startSuiteSignIn, signInWithOAuth, signInWithPassword, signUpWithPassword } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -22,11 +23,12 @@ function LoginPageContent() {
     type: "idle",
     message: ""
   });
+  const sessionNotice = searchParams.get("notice") === "revocation-unconfirmed"
+    ? "This app is signed out locally. The account service could not confirm revocation; use your account page to review other sessions."
+    : null;
 
   const nextPath = useMemo(() => {
-    const next = searchParams.get("next");
-    if (!next || !next.startsWith("/")) return "/";
-    return next;
+    return safeAppReturnPath(searchParams.get("next"));
   }, [searchParams]);
 
   useEffect(() => {
@@ -63,6 +65,38 @@ function LoginPageContent() {
     }
   }
 
+  async function onSuiteSignIn() {
+    setStatus({ type: "loading", message: "Opening jonathantipper.com…" });
+    const error = await startSuiteSignIn(nextPath);
+    if (error) setStatus({ type: "error", message: error });
+  }
+
+  if (suiteEnabled) {
+    return (
+      <div className="flex min-h-[80vh] items-center justify-center">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <p className="text-sm font-semibold text-jade">jonathantipper.com</p>
+            <h1 className="text-3xl font-bold tracking-tight">Continue to Learn Chinese.</h1>
+            <p className="text-sm text-muted-foreground">One familiar account, with your Mandarin learning kept in this app.</p>
+          </div>
+          <Card>
+            <CardHeader><CardTitle>Sign in with your account</CardTitle><CardDescription>Sign in or create an account on jonathantipper.com, then return to the page you were opening.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              {(status.message || authError || sessionNotice) ? <p role={status.type === "error" || authError || sessionNotice ? "alert" : "status"} className="text-sm text-muted-foreground">{status.message || authError || sessionNotice}</p> : null}
+              <Button className="w-full" onClick={onSuiteSignIn} disabled={status.type === "loading" || loading}>
+                {status.type === "loading" || loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} Continue with jonathantipper.com
+              </Button>
+              {status.type === "error" && suiteCanonicalAppUrl() ? <p className="text-xs text-muted-foreground">Using an older app address? <a className="underline" href={suiteCanonicalAppUrl() ?? "/"}>Open the main Learn Chinese address</a>. Browser-only saves stay at their original address.</p> : null}
+              <p className="text-xs text-muted-foreground">Existing accounts and learning records stay in place. Other apps keep their own access requirements.</p>
+            </CardContent>
+          </Card>
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground"><a href={suiteAccountLink("/launchpad")} className="underline">Explore Launchpad</a><a href={suiteAccountLink("/account")} className="underline">Manage account</a><a href={suiteAccountLink("/privacy")} className="underline">Privacy</a></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-[80vh] items-center justify-center animate-fade-in">
       <div className="w-full max-w-sm space-y-6">
@@ -89,6 +123,7 @@ function LoginPageContent() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {(sessionNotice || authError) ? <p role="alert" className="text-xs text-muted-foreground">{sessionNotice || authError}</p> : null}
             {/* OAuth buttons */}
             <div className="space-y-2">
               <Button

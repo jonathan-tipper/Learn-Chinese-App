@@ -9,6 +9,11 @@ const withPWA = withPWAInit({
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
+      // Authentication responses and callback URLs must never enter PWA caches.
+      {
+        urlPattern: ({ url }) => url.pathname === "/login" || url.pathname.startsWith("/auth/"),
+        handler: "NetworkOnly",
+      },
       // ── Google Fonts CSS ─────────────────────────────────────────────────
       {
         urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -66,6 +71,15 @@ const nextConfig = {
           { key: "Cache-Control", value: "no-store" },
         ],
       },
+      ...["/login", "/auth/:path*"].map((source) => ({
+        source,
+        headers: [
+          { key: "Cache-Control", value: "private, no-store, max-age=0" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      })),
     ];
   },
 };
