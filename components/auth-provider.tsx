@@ -52,7 +52,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     async signUpWithPassword(email: string, password: string) {
       const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: new URL("/login", window.location.origin).toString()
+        }
+      });
       return error?.message ?? null;
     },
     async signInWithOAuth(provider: Provider, nextPath: string) {
