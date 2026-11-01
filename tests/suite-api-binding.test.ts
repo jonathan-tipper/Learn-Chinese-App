@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getUserIdFromRequest } from "@/lib/auth";
+import { GET as profileGet } from "@/app/api/profile/route";
 
-const { getUser } = vi.hoisted(() => ({ getUser: vi.fn() }));
+const { getUser, getProfile } = vi.hoisted(() => ({ getUser: vi.fn(), getProfile: vi.fn() }));
 vi.mock("@/lib/env", () => ({ isSupabaseAuthEnabled: () => true, isDevAuthFallbackEnabled: () => true }));
 vi.mock("@/lib/supabase", () => ({ getSupabaseAuthClient: () => ({ auth: { getUser } }) }));
+vi.mock("@/server/store", () => ({ getProfile }));
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const token = (clientId: string | null) => `${Buffer.from('{"alg":"ES256"}').toString("base64url")}.${Buffer.from(JSON.stringify({ sub: userId, iss: "https://project.supabase.co/auth/v1", aud: "authenticated", role: "authenticated", client_id: clientId })).toString("base64url")}.provider-verified-signature`;
@@ -16,6 +18,7 @@ describe("API identity and OAuth client binding", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://project.supabase.co");
     vi.stubEnv("NEXT_PUBLIC_SUITE_AUTH_ALLOW_LEGACY_SESSIONS", "false");
     getUser.mockReset().mockResolvedValue({ data: { user: { id: userId } }, error: null });
+    getProfile.mockReset().mockResolvedValue({ userId, level: "A0" });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -39,6 +42,34 @@ describe("API identity and OAuth client binding", () => {
     await expect(getUserIdFromRequest(request(token(null)))).rejects.toThrow("Invalid bearer token");
     vi.stubEnv("NEXT_PUBLIC_SUITE_AUTH_ALLOW_LEGACY_SESSIONS", "true");
     await expect(getUserIdFromRequest(request(token(null)))).resolves.toBe(userId);
+  });
+
+  it.each(["learn-chinese-client", "another-app"])(
+    "blocks %s at the real profile API before privileged data access when disabled", async (clientId) => {
+      vi.stubEnv("NEXT_PUBLIC_SUITE_AUTH_ENABLED", "false");
+      const response = await profileGet(request(token(clientId)));
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({ error: "Invalid bearer token." });
+      expect(getUser).toHaveBeenCalledOnce();
+      expect(getProfile).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps the legacy profile API working when disabled even without a configured OAuth client", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUITE_AUTH_ENABLED", "false");
+    vi.stubEnv("NEXT_PUBLIC_SUITE_AUTH_CLIENT_ID", "");
+    const response = await profileGet(request(token(null)));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ profile: { userId } });
+    expect(getProfile).toHaveBeenCalledExactlyOnceWith(userId);
+  });
+
+  it("continues enforcing provider verification for direct sessions while disabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUITE_AUTH_ENABLED", "false");
+    getUser.mockResolvedValue({ data: { user: null }, error: new Error("Signature invalid") });
+    const response = await profileGet(request(token(null)));
+    expect(response.status).toBe(401);
+    expect(getProfile).not.toHaveBeenCalled();
   });
 
   it("does not use development identity fallback while shared sign-in is enabled", async () => {
