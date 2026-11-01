@@ -84,10 +84,12 @@ Copy `.env.example` to `.env.local` and fill the values you need:
 
 ## Authentication setup
 
+- Live app: [learnchinese.jonathantipper.com](https://learnchinese.jonathantipper.com).
 - Login page: `/login`
 - Providers supported: Supabase OAuth (`google`, `github`) and Supabase email/password.
 - In Supabase dashboard, enable the providers you want under Authentication > Providers.
 - Add your deployed URL and local URL (`http://localhost:3000`) to Supabase Authentication URL allow list.
+- Allow `https://learnchinese.jonathantipper.com/login**` to cover the login callback and its OAuth `next` query. Email confirmations also return to the current app's `/login` page. Preserve other apps' redirect URLs when using a shared Supabase project.
 
 ## Database migrations
 
