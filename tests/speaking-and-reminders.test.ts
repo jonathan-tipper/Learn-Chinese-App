@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as dailyReminder } from "@/app/api/push/daily/route";
 import { POST as onboardingSave } from "@/app/api/onboarding/save/route";
 import { GET as speakingPrompts } from "@/app/api/speaking/prompts/route";
@@ -114,6 +114,7 @@ describe("daily reminders", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.useRealTimers();
   });
 
   it("computes local hours and builds messages from the plan and review load", () => {
@@ -138,6 +139,9 @@ describe("daily reminders", () => {
 
   it("only nudges learners whose hour matches, who have not practised, once per day", async () => {
     const now = new Date("2026-09-11T18:30:00.000Z"); // 19:30 London
+    // Session creation and the candidate check must share the fixture's day.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     await saveProfile({ ...baseProfile, reminderHour: 19 });
     await saveProfile({ ...baseProfile, userId: "22222222-2222-4222-8222-222222222222", reminderHour: 8 });
     await saveProfile({ ...baseProfile, userId: "44444444-4444-4444-8444-444444444444", reminderHour: 19, lastReminderDate: "2026-09-11" });

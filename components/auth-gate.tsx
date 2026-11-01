@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { safeAppReturnPath } from "@/lib/suite-auth";
 
-const PUBLIC_PATHS = new Set(["/login", "/offline"]);
+const PUBLIC_PATHS = new Set(["/login", "/offline", "/auth/suite/callback"]);
 
 /**
  * Local development only: render the app without a Supabase session so the UI can be
@@ -13,6 +14,7 @@ const PUBLIC_PATHS = new Set(["/login", "/offline"]);
  * production builds.
  */
 const DEV_AUTH_BYPASS = process.env.NODE_ENV !== "production"
+  && process.env.NEXT_PUBLIC_SUITE_AUTH_ENABLED !== "true"
   && ["1", "true", "yes", "on"].includes((process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS ?? "").toLowerCase());
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -24,7 +26,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading || user || isPublic) return;
-    const next = encodeURIComponent(pathname || "/");
+    const next = encodeURIComponent(safeAppReturnPath(window.location.pathname + window.location.search + window.location.hash));
     router.replace(`/login?next=${next}`);
   }, [isPublic, loading, pathname, router, user]);
 
