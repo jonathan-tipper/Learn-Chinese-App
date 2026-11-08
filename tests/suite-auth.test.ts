@@ -1,4 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { safeReturnPath } from "../lib/vendor/suite-client.mjs";
+
+const canonicalBypasses = [
+  "/.//ignored.example//attacker.example/app",
+  "/parent/..//attacker.example/app",
+  "/%2e//attacker.example/app",
+  "/%252e//attacker.example/app",
+  "/%25252e//attacker.example/app",
+  "/.%2f/attacker.example/app"
+];
 
 const { legacySession, legacySignOut, getUser } = vi.hoisted(() => ({
   legacySession: vi.fn(),
@@ -115,6 +125,25 @@ describe("Learn Chinese shared-account integration", () => {
     const integration = await import("@/lib/suite-auth");
     expect(await integration.getBrowserSession()).toBeNull();
     expect(legacySession).not.toHaveBeenCalled();
+  });
+
+  it("rejects return paths that canonicalise into another origin", () => {
+    for (const value of canonicalBypasses) {
+      expect(safeReturnPath(value), value).toBe("/");
+      expect(safeReturnPath(value, "/review"), value).toBe("/review");
+    }
+    expect(safeReturnPath("/review?mode=tones#queue")).toBe("/review?mode=tones#queue");
+  });
+
+  it("keeps the login page's one-pass app return on the app origin", async () => {
+    const integration = await import("@/lib/suite-auth");
+    for (const value of canonicalBypasses) {
+      // Login passes this result directly to router.replace for a signed-in user.
+      const destination = integration.safeAppReturnPath(value);
+      expect(destination, value).toBe("/");
+      expect(new URL(destination, window.location.origin).origin, value).toBe(window.location.origin);
+    }
+    expect(integration.safeAppReturnPath("/review?mode=tones#queue")).toBe("/review?mode=tones#queue");
   });
 
   it("rejects unsafe returns and refuses to start from a different app origin", async () => {
